@@ -102,26 +102,16 @@ class LrnPool(Aggregation):
         self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias)
         self.query = nn.Parameter(torch.rand(1, k, dim_hidden))
         self.query_idx = query_idx
+        self.batch_query = None
         self.k = k
 
     def forward(self, x:Tensor, mask:BoolTensor=None):  
-        # ## TILE LEARNED QUERY INTO A BATCH
-        # b = x.size(0)
-        # query = torch.tile(self.query, (b, 1, 1))
-        # ## AGGREGATE
-        # out = self.attn(query, x, mask)
-        # ## FLATTEN
-        # # return out.view(b, -1)
-        # return query.view(b, -1) + out.view(b, -1)
-        
-        ## AGGREGATE
-        # query = x[:, self.query_idx] #.unsqueeze(1)
-        # residual = self.attn(query, x, mask)
-        # return query + residual 
         return x[:, self.query_idx]
 
     def get_query(self, x, **kwargs):
         bs = len(x)
+        if self.batch_query and len(self.batch_query) == bs:
+            return self.batch_query
         return torch.tile(self.query, (bs, 1, 1))
 
 
