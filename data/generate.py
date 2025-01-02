@@ -150,6 +150,9 @@ def generate_y(
         "knn4": knn(4),
         "knn8": knn(8),
         "knn16": knn(16),
+        "knn32": knn(32),
+        "knn64": knn(64),
+        "knn128": knn(128),
         "kfn1": kfn(1),
         "kfn2": kfn(2),
         "kfn3": kfn(3),
@@ -167,11 +170,11 @@ def generate_y(
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-m', '--method', default="knn16", help='Aggregation method for the dataset.')
-    parser.add_argument('-n', '--num_samples', default=1_000_000, help='Number of samples in the dataset.')
-    parser.add_argument('-k', '--num_vectors', default=32, help='Number of vectors to aggregate per sample.')
-    parser.add_argument('-d', '--dim_vectors', default=16, help='Dimensionality of the vectors per sample.')
-    parser.add_argument('-s', '--seed', default=42, help='Seed for dataset generation.')
+    parser.add_argument('-m', '--method', default="knn1", type=str, help='Aggregation method for the dataset.')
+    parser.add_argument('-n', '--num_samples', default=1_000_000, type=int, help='Number of samples in the dataset.')
+    parser.add_argument('-k', '--num_vectors', default=64, type=int, help='Number of vectors to aggregate per sample.')
+    parser.add_argument('-d', '--dim_vectors', default=16, type=int, help='Dimensionality of the vectors per sample.')
+    parser.add_argument('-s', '--seed', default=42, type=int, help='Seed for dataset generation.')
     args = parser.parse_args()
     np.random.seed(args.seed)
 

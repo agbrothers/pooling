@@ -102,17 +102,37 @@ class LrnPool(Aggregation):
         self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias)
         self.query = nn.Parameter(torch.rand(1, k, dim_hidden))
         self.query_idx = query_idx
-        self.batch_query = None
         self.k = k
+        self.expand = None
+        # self.query_batch = None
 
     def forward(self, x:Tensor, mask:BoolTensor=None):  
         return x[:, self.query_idx]
 
     def get_query(self, x, **kwargs):
-        bs = len(x)
-        if self.batch_query and len(self.batch_query) == bs:
-            return self.batch_query
-        return torch.tile(self.query, (bs, 1, 1))
+        bs = x.size(0)
+        return self.query.expand((bs,-1,-1))
+        
+        # return torch.tile(self.query, (bs, 1, 1))
+
+        # k = x.size(1)
+
+        # if self.expand is None or k != self.expand.weight.size(1):
+        #     self.expand = torch.empty(k+1, k, dtype=x.dtype, device=x.device)
+        #     self.expand[self.query_idx] = 0
+        #     self.expand[self.query_idx+1:] = torch.eye(k)
+        # x = torch.einsum("nk,bkd->bnd", self.expand.detach(), x)
+
+        # if self.expand is None or k != self.expand.weight.size(1):
+        #     self.expand = nn.Linear(k, k+1, device=x.device, bias=False)
+        #     self.expand.weight.requires_grad = False
+        #     self.expand.weight[self.query_idx] = 0.
+        #     self.expand.weight[self.query_idx+1:] = torch.eye(k)
+        # x = self.expand(x.transpose(1,2)).transpose(1,2) #[0] #,:,0]
+
+        # x[:, self.query_idx] = self.query
+        # return x
+    
 
 
 class CtrPool(Aggregation): 
