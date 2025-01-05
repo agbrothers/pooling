@@ -74,6 +74,7 @@ class Transformer(nn.Module):
             bias_attn,
             bias_ff,
             flash,
+            seed=None,
             **kwargs,
         ) -> None: 
         super().__init__()
@@ -94,13 +95,14 @@ class Transformer(nn.Module):
         self.encoder = Encoder(layer, num_layers)
 
         ## INITIALIZE WEIGHTS
-        self.apply(self.init_weights)
-        for name,param in self.named_parameters():
-            if name.endswith("out.weight"):
-                torch.nn.init.normal_(param, mean=0.0, std=0.02/math.sqrt(2 * num_layers))
+        if seed:
+            self.apply(self.initialize)
+            for name,param in self.named_parameters():
+                if name.endswith("out.weight"):
+                    torch.nn.init.normal_(param, mean=0.0, std=0.02/math.sqrt(2 * num_layers))
         return
 
-    def init_weights(self, module) -> None:
+    def initialize(self, module) -> None:
         """ 
         INITIALIZATION SCHEME AS IN 
         [1] https://arxiv.org/pdf/1502.01852.pdf

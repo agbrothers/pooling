@@ -48,6 +48,7 @@ class Autoencoder(nn.Module):
             num_embd=32,
             num_out=None,
             expansion=2,
+            seed=None,
             **kwargs,
         ) -> None: 
         super().__init__()
@@ -76,16 +77,20 @@ class Autoencoder(nn.Module):
         self.encoder = Attenuator(
             dim_hidden*self._exp,
             dim_ff*self._exp,
-            num_layers,
-            num_heads,
-            dropout_w,
-            dropout_e,
-            dropout_ff,
-            bias_attn,
-            bias_ff,
-            flash,
-            pooling_norm,
-            pooling_method, 
+            num_layers=num_layers,
+            num_heads=num_heads,
+            dropout_w=dropout_w,
+            dropout_e=dropout_e,
+            dropout_ff=dropout_ff,
+            bias_attn=bias_attn,
+            bias_ff=bias_ff,
+            flash=flash,
+            pooling_norm=pooling_norm,
+            pooling_method=pooling_method, 
+            # dim_input=None,
+            # dim_output=None,
+            # num_emb=None,
+            # pos_emb=False,
             **kwargs,
         )
         decoder_layer = TransformerLayer(
@@ -107,22 +112,9 @@ class Autoencoder(nn.Module):
         self.pos_emb = nn.Embedding(num_embeddings=num_embd, embedding_dim=dim_hidden*self._exp)
 
         ## INITIALIZE WEIGHTS
-        self.apply(self.initialize)
-        # for name,param in self.named_parameters():
-        #     if name.endswith("out.weight"):
-        #         torch.nn.init.normal_(param, mean=0.0, std=0.00001)
-                # torch.nn.init.normal_(param, mean=0.0, std=0.02/math.sqrt(2 * num_layers))
-        #     if name.endswith("pool.attn.Q.weight"):
-        #         torch.nn.init.normal_(param, mean=0.0, std=0.0002)
-        #     # if name.endswith("pool.attn.KV.weight"):
-        #     #     with torch.no_grad():
-        #     #         param[:dim_hidden] = torch.nn.Parameter(-self.pool.attn.Q.weight.clone().detach())
-        #         # torch.nn.init.normal_(param[:dim_hidden], mean=0.0, std=0.0002)
-        #         # torch.nn.init.eye_(param[:dim_hidden])
-        #         # torch.nn.init.eye_(param[:dim_hidden])
-        #         # torch.nn.init.eye_(param[dim_hidden:])
-        #     elif name.endswith("pool.attn.out.weight"):
-        #         torch.nn.init.eye_(param)        
+        if seed:
+            torch.manual_seed(seed)
+            self.apply(self.initialize)        
         return
 
 
@@ -141,7 +133,8 @@ class Autoencoder(nn.Module):
             z = z.unsqueeze(1)
         x_hat = self.decoder(
             # query=x[:, :self._num_out], 
-            query=torch.tile(pos_emb[:self._num_out], (b,1,1)), 
+            # query=torch.tile(pos_emb[:self._num_out], (b,1,1)), 
+            query=pos_emb[:self._num_out].expand((b,-1,-1)), 
             context=z
         ) 
         return self.proj_out(x_hat)

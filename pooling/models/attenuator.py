@@ -1,4 +1,3 @@
-import math
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -9,9 +8,9 @@ from pooling.nn.pooling import (
     AvgPool, 
     SumPool, 
     RelPool, 
-    LrnPool, 
+    LrnPool,
+    AdaPool, 
     CtrPool,
-    RecurrentQueryPool,
 )
 
 
@@ -34,7 +33,8 @@ class Attenuator(nn.Module):
             num_emb=2,            
             pos_emb=False,
             pooling_norm=False,
-            pooling_method="relational_query",
+            pooling_method="RelPool",
+            seed=None,
             **kwargs,
         ) -> None: 
         super().__init__()
@@ -79,9 +79,10 @@ class Attenuator(nn.Module):
         if dim_output:
             self.proj_out = nn.Linear(dim_hidden, dim_output, bias=bias_ff)
 
-        self.pos_emb = None
+        ## EMBEDDING TO DIFFERENTIATE QUERY FROM OTHER INPUTS
+        self.query_emb = None
         if pos_emb:
-            self.pos_emb = nn.Embedding(num_embeddings=num_emb, embedding_dim=dim_hidden)
+            self.query_emb = nn.Embedding(num_embeddings=num_emb, embedding_dim=dim_hidden)
 
         ## INITIALIZE POOLING LAYER
         if pooling_method == "MaxPool":
@@ -92,15 +93,18 @@ class Attenuator(nn.Module):
             pooling_layer = SumPool(dim_hidden, pooling_norm)
         elif pooling_method == "RelPool":
             pooling_layer = RelPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=0) 
-            self.pos_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
-            # self._query = True
+            self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
+        elif pooling_method == "AdaPool":
+            pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=0) 
+            self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
+            self._query = True
         elif pooling_method == "LrnPool":
             pooling_layer = LrnPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
-            # self.pos_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
+            # self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
             self._query = True
         elif pooling_method == "CtrPool":
             pooling_layer = CtrPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
-            self.pos_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
+            self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
             self._query = True
         # elif pooling_method == "learned_queries":
         #     pooling_layer = LrnPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=3)
@@ -114,7 +118,23 @@ class Attenuator(nn.Module):
         self.pool = pooling_layer
 
         ## INITIALIZE WEIGHTS
-        self.apply(self.initialize)
+        # print(self.transformer.encoder.layers[0].ff.l_in.weight[0])
+        # torch.manual_seed(0)
+        # self.apply(self.initialize)
+        # print(self.transformer.encoder.layers[0].ff.l_in.weight[0])
+
+        if seed:
+            torch.manual_seed(seed)
+            self.apply(self.initialize)
+
+        # self.pool.apply(self.initialize)
+        # if self.proj_in:
+        #     self.proj_in.apply(self.initialize)
+        # if self.proj_out:
+        #     self.proj_out.apply(self.initialize)
+        # if self.query_emb:
+        #     self.query_emb.apply(self.initialize)
+
         # for name,param in self.named_parameters():
         # #     if name.endswith("out.weight"):
         # #         torch.nn.init.normal_(param, mean=0.0, std=0.02/math.sqrt(2 * num_layers))
@@ -145,10 +165,10 @@ class Attenuator(nn.Module):
             #     mask = torch.cat((torch.ones(mask.shape[1]), mask), dim=1)
         
         ## ADD POSITIONAL EMBEDDINGS
-        if self.pos_emb:
+        if self.query_emb:
             idx = torch.ones(x.shape[:-1], dtype=torch.long, device=x.device)
             idx[:, 0] = 0
-            x = x + self.pos_emb(idx)
+            x = x + self.query_emb(idx)
 
         ## STEP TRANSFORMER ENCODER
         x = self.transformer(x, mask)
@@ -203,3 +223,75 @@ class Attenuator(nn.Module):
         ## RETURN THE RECURRENT STATE SHAPE (RNNs ONLY)
         return self.get_initial_recurrent_state().shape
     
+
+if __name__ == "__main__":
+
+    ## CHECK THAT BASE TRANSFORMERS HAVE IDENTICAL PARAMETERS
+    ## DESPITE CONFIGURATION WITH DIFFERENT POOLING LAYERS
+    ## NOTE: Want to prevent any undue influence from the  
+    ## lottery ticket hypothesis. 
+
+    SEED = 0
+    dim_hidden = 16
+    dim_ff = 64
+    num_layers = 12
+    num_heads = 8
+    dropout_w = 0.
+    dropout_e = 0.
+    dropout_ff = 0.1
+    bias_attn = False
+    bias_ff = True
+
+    torch.manual_seed(SEED)
+    a = Attenuator(
+        dim_hidden,
+        dim_ff,
+        num_layers,
+        num_heads,
+        dropout_w,
+        dropout_e,
+        dropout_ff,
+        bias_attn,
+        bias_ff,
+        pooling_method="RelPool", 
+        seed=SEED,
+    )
+
+    torch.manual_seed(SEED)
+    b = Attenuator(
+        dim_hidden,
+        dim_ff,
+        num_layers,
+        num_heads,
+        dropout_w,
+        dropout_e,
+        dropout_ff,
+        bias_attn,
+        bias_ff,
+        pooling_method="AvgPool",
+        seed=SEED,
+    )
+
+    for i in range(num_layers):
+        assert torch.all(
+            a.transformer.encoder.layers[i].attn.Q.weight ==  
+            b.transformer.encoder.layers[i].attn.Q.weight  
+        )
+        assert torch.all(
+            a.transformer.encoder.layers[i].attn.KV.weight ==  
+            b.transformer.encoder.layers[i].attn.KV.weight  
+        )
+        assert torch.all(
+            a.transformer.encoder.layers[i].attn.out.weight ==  
+            b.transformer.encoder.layers[i].attn.out.weight  
+        )
+        assert torch.all(
+            a.transformer.encoder.layers[i].ff.l_in.weight ==  
+            b.transformer.encoder.layers[i].ff.l_in.weight  
+        )
+        assert torch.all(
+            a.transformer.encoder.layers[i].ff.l_out.weight ==  
+            b.transformer.encoder.layers[i].ff.l_out.weight  
+        )
+
+    pass

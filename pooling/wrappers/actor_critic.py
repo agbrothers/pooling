@@ -7,10 +7,6 @@ from pooling.nn.mlp import MLP
 from pooling.nn.embedding import EmbeddingConcatLayer
 
 
-def symexp(x):
-    return torch.sign(x) * (torch.exp(torch.abs(x)) - 1)
-
-
 class ActorCritic(nn.Module):
     '''
     GENERIC ACTOR CRITIC WRAPPER FOR RL MODELS 
@@ -30,7 +26,10 @@ class ActorCritic(nn.Module):
             output_head_vf=True,
             output_head_pi_layers=2,
             output_head_vf_layers=2,
+            output_head_pi_dim=None,
+            output_head_vf_dim=None,
             share_layers=True, 
+            seed=None,
             **kwargs
         ):
         super().__init__()
@@ -72,7 +71,7 @@ class ActorCritic(nn.Module):
         if self.has_output_head_pi:
             self.action_head = MLP(
                 dim_input=self.pi._dim_hidden, 
-                dim_hidden=self.pi._dim_hidden, 
+                dim_hidden=output_head_pi_dim or self.pi._dim_hidden, 
                 dim_output=self._dim_action,
                 num_layers=output_head_pi_layers,
             )
@@ -81,10 +80,14 @@ class ActorCritic(nn.Module):
             dim_hidden = self.pi._dim_hidden if not self.vf else self.vf._dim_hidden
             self.value_head = MLP(
                 dim_input=dim_hidden, 
-                dim_hidden=dim_hidden, 
+                dim_hidden=output_head_vf_dim or dim_hidden, 
                 dim_output=1,
                 num_layers=output_head_vf_layers,
             )
+        ## INITIALIZE WEIGHTS
+        if seed:
+            torch.manual_seed(seed)
+            self.apply(self.initialize)            
         return
 
     def init_networks(self, pi, vf, share_layers, **kwargs):
@@ -133,6 +136,28 @@ class ActorCritic(nn.Module):
     def get_value(self):
         return self.value
 
+    def initialize(self, module) -> None:
+        """ 
+        INITIALIZATION SCHEME AS IN 
+        [1] https://arxiv.org/pdf/1502.01852.pdf
+        [2] https://github.com/karpathy/minGPT/blob/master/mingpt/model.py#L163
+        
+        """
+        ## LINEAR LAYERS
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        ## LAYERNORMS
+        elif isinstance(module, nn.LayerNorm):
+            torch.nn.init.zeros_(module.bias)
+            torch.nn.init.ones_(module.weight)
+        ## EMBEDDING WEIGHTS
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        return
+
+
 
 class TokenActorCritic(nn.Module):
     '''
@@ -156,7 +181,10 @@ class TokenActorCritic(nn.Module):
             output_head_vf=True,
             output_head_pi_layers=2,
             output_head_vf_layers=2,
+            output_head_pi_dim=None,
+            output_head_vf_dim=None,            
             share_layers=True, 
+            seed=None,
             **kwargs
         ):
         super().__init__()
@@ -200,7 +228,7 @@ class TokenActorCritic(nn.Module):
         if self.has_output_head_pi:
             self.action_head = MLP(
                 dim_input=self.pi._dim_hidden, 
-                dim_hidden=self.pi._dim_hidden, 
+                dim_hidden=output_head_pi_dim or self.pi._dim_hidden, 
                 dim_output=self._dim_action,
                 num_layers=output_head_pi_layers,
             )
@@ -209,10 +237,14 @@ class TokenActorCritic(nn.Module):
             dim_hidden = self.pi._dim_hidden if not self.vf else self.vf._dim_hidden
             self.value_head = MLP(
                 dim_input=dim_hidden, 
-                dim_hidden=dim_hidden, 
+                dim_hidden=output_head_vf_dim or dim_hidden, 
                 dim_output=1,
                 num_layers=output_head_vf_layers,
             )
+        ## INITIALIZE WEIGHTS
+        if seed:
+            torch.manual_seed(seed)
+            self.apply(self.initialize) 
         return
 
     def init_networks(self, pi, vf, share_layers, **kwargs):
@@ -249,10 +281,6 @@ class TokenActorCritic(nn.Module):
         embd_pi = self.pi(input_pi)
         embd_vf = self.vf(input_vf) if self.vf else embd_pi.clone()
         action_logits, self.value = self.output(embd_pi, embd_vf)
-
-        ## SCALE VALUE PREDICTION
-        # self.value = symexp(self.value)
-
         return action_logits
 
     def value_function(self) -> Tensor:
@@ -269,3 +297,113 @@ class TokenActorCritic(nn.Module):
 
     def get_value(self):
         return self.value
+
+    def initialize(self, module) -> None:
+        """ 
+        INITIALIZATION SCHEME AS IN 
+        [1] https://arxiv.org/pdf/1502.01852.pdf
+        [2] https://github.com/karpathy/minGPT/blob/master/mingpt/model.py#L163
+        
+        """
+        ## LINEAR LAYERS
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.2)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        ## LAYERNORMS
+        elif isinstance(module, nn.LayerNorm):
+            torch.nn.init.zeros_(module.bias)
+            torch.nn.init.ones_(module.weight)
+        ## EMBEDDING WEIGHTS
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.2)
+        return
+
+
+
+if __name__ == "__main__":
+    
+    ## CHECK THAT BASE TRANSFORMERS HAVE IDENTICAL PARAMETERS
+    ## DESPITE CONFIGURATION WITH DIFFERENT POOLING LAYERS
+    ## NOTE: Want to prevent any undue influence from the  
+    ## lottery ticket hypothesis. 
+        
+    from pooling.models.attenuator import Attenuator
+
+    SEED = 0
+    dim_hidden = 16
+    dim_ff = 64
+    num_layers = 12
+    num_heads = 8
+    dropout_w = 0.
+    dropout_e = 0.
+    dropout_ff = 0.1
+    bias_attn = False
+    bias_ff = True
+
+    torch.manual_seed(SEED)
+    a = TokenActorCritic(
+        pi=Attenuator,
+        vf=Attenuator,
+        dim_token=5,
+        dim_action=5,
+        dim_embd=4,
+        num_embd=4,
+        share_layers=True,
+        dim_hidden=dim_hidden,
+        dim_ff=dim_ff,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        dropout_w=dropout_w,
+        dropout_e=dropout_e,
+        dropout_ff=dropout_ff,
+        bias_attn=bias_attn,
+        bias_ff=bias_ff,
+        pooling_method="RelPool", 
+        seed=SEED,
+    )
+
+    torch.manual_seed(SEED)
+    b = TokenActorCritic(
+        pi=Attenuator,
+        vf=Attenuator,
+        dim_token=5,
+        dim_action=5,
+        dim_embd=4,
+        num_embd=4,
+        share_layers=True,
+        dim_hidden=dim_hidden,
+        dim_ff=dim_ff,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        dropout_w=dropout_w,
+        dropout_e=dropout_e,
+        dropout_ff=dropout_ff,
+        bias_attn=bias_attn,
+        bias_ff=bias_ff,
+        pooling_method="AvgPool",
+        seed=SEED,
+    )
+
+    for i in range(num_layers):
+        assert torch.all(
+            a.pi.transformer.encoder.layers[i].attn.Q.weight ==  
+            b.pi.transformer.encoder.layers[i].attn.Q.weight  
+        )
+        assert torch.all(
+            a.pi.transformer.encoder.layers[i].attn.KV.weight ==  
+            b.pi.transformer.encoder.layers[i].attn.KV.weight  
+        )
+        assert torch.all(
+            a.pi.transformer.encoder.layers[i].attn.out.weight ==  
+            b.pi.transformer.encoder.layers[i].attn.out.weight  
+        )
+        assert torch.all(
+            a.pi.transformer.encoder.layers[i].ff.l_in.weight ==  
+            b.pi.transformer.encoder.layers[i].ff.l_in.weight  
+        )
+        assert torch.all(
+            a.pi.transformer.encoder.layers[i].ff.l_out.weight ==  
+            b.pi.transformer.encoder.layers[i].ff.l_out.weight  
+        )
+    pass
