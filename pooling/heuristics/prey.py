@@ -12,6 +12,7 @@ class PreyHeuristic(Policy):
         self.view_requirements["prev_actions"].used_for_compute_actions = False
         # self.prey_type = 3
         self.pred_type = 2
+        self.seed = args[2]["seed"]
 
     def compute_actions(
         self,
