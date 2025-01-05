@@ -16,13 +16,14 @@ setup(
         "numpy",
         "pettingzoo[mpe]",
         "opencv-python",
-        "ray",
-        "ray[tune]",
         "dm_tree",
         "typer",
         "scipy",
         "lz4",
         "tensorboard",
+        "pyvirtualdisplay",
+        "gymnasium==0.29.0",
+        "ray==2.37.0"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
