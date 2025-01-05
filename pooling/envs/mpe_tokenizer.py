@@ -9,31 +9,43 @@ def symlog(x):
     return np.sign(x) * np.log(np.abs(x)+1)
 
 class TokenizedMPE(PettingZooEnv):
-    def __init__(self, env, **kwargs):
+    def __init__(
+            self, 
+            env, 
+            mpe_config, 
+            landmark_spawning, 
+            log_path=None,
+            log_agents=None,
+            log_rew=False,
+            log_obs=False,
+            log_act=False,
+            **kwargs,
+        ):
         super().__init__(env)
         
         ## CONFIG
         env_name = str(env)
         self.id = hex(id(self))
-        self.config = env.unwrapped._ezpickle_kwargs
-        self.render_mode = self.config["render_mode"]
+        self.config = mpe_config
+        self.landmark_spawning = landmark_spawning
+        self.render_mode = mpe_config["render_mode"]
         self.metadata = {
             "render.modes": [self.render_mode],
             "render_fps": 20, 
         }
 
         ## LOGGING KWARGS
-        self.log_path = kwargs.get("log_path", None)
-        self.log_agents = kwargs.get("log_agents", None)
-        self.log_rew = kwargs.get("log_rew", False)
-        self.log_obs = kwargs.get("log_obs", False)
-        self.log_act = kwargs.get("log_act", False)
+        self.log_path = log_path
+        self.log_agents = log_agents or []
+        self.log_rew = log_rew
+        self.log_obs = log_obs
+        self.log_act = log_act
 
         ## SELECT TOKENIZER BASED ON MPE SCENARIO
         if env_name == "simple_tag_v3":
-            self.num_good = self.config["num_good"]
-            self.num_obstacles = self.config["num_obstacles"]
-            self.num_adversaries = self.config["num_adversaries"]
+            self.num_good = mpe_config["num_good"]
+            self.num_obstacles = mpe_config["num_obstacles"]
+            self.num_adversaries = mpe_config["num_adversaries"]
             self.dim_token = 5
             self.tokenizer = self.simple_tag_tokenizer
         elif env_name == "simple_cover_v3":
@@ -75,9 +87,11 @@ class TokenizedMPE(PettingZooEnv):
             trun_dict.update(truncated)
             info_dict.update(info)
             aid = list(reward.keys())[0]
-            self.episode_reward[aid] += symlog(reward[aid])
+            self.episode_reward[aid] += reward[aid]
+            # self.episode_reward[aid] += symlog(reward[aid])
         obs_dict = self.tokenizer(obs_dict)
-        rew_dict = {k:symlog(v) for k,v in rew_dict.items()}
+        rew_dict = {k:v for k,v in rew_dict.items()}
+        # rew_dict = {k:symlog(v) for k,v in rew_dict.items()}
         return obs_dict, rew_dict, term_dict, trun_dict, info_dict
     
     def reset(self, seed=None, options=None):
@@ -95,9 +109,37 @@ class TokenizedMPE(PettingZooEnv):
         # self.prev_episode_reward = self.episode_reward.copy()
         self.episode_reward = {aid:0. for aid in sorted(self._agent_ids)}
         info_dict = self.env.reset(seed=seed, options=options)
+        self.init_landmarks()
         obs_dict = {agent_id: self.env.observe(agent_id) for agent_id in self.env.agents}
         obs_dict = self.tokenizer(obs_dict)
         return obs_dict, info_dict or {}
+    
+    def init_landmarks(self):
+        for i, landmark in enumerate(self.env.world.landmarks):
+            if not landmark.boundary:
+                ## ZERO VELOCITY
+                landmark.state.p_vel = np.zeros(self.env.world.dim_p)        
+
+                ## DEFAULT SPAWNING 
+                if self.landmark_spawning == "default":
+                    landmark.state.p_pos = np.random.uniform(-0.9, +0.9, self.env.world.dim_p)
+                ## SPREAD
+                elif self.landmark_spawning == "spread":
+                    spawn_dist = np.log2(len(self.env.world.landmarks))
+                    landmark.state.p_pos = np.random.uniform(-spawn_dist, +spawn_dist, self.env.world.dim_p)
+                ## OUT-OF-BOUNDS
+                elif self.landmark_spawning == "out_of_bounds":
+                    # ## UNIFORM
+                    # noise = 2*np.random.rand() - 1
+                    # landmark.state.p_pos = np.ones(self.env.world.dim_p) * 5. + (noise*1e-3)
+                    ## RADIAL
+                    r = 8.
+                    theta = 2*np.pi*np.random.rand()
+                    landmark.state.p_pos = np.array((r*np.sin(theta), r*np.cos(theta)))
+                ## ORIGIN
+                elif self.landmark_spawning == "origin":
+                    landmark.state.p_pos = np.zeros(self.env.world.dim_p)
+                                
 
     def render(self):
         return self.env.render()
@@ -126,6 +168,7 @@ class TokenizedMPE(PettingZooEnv):
             is_good = "agent" in agent_id
             num_good = self.num_good - is_good
             num_adversaries = self.num_adversaries - (not is_good)
+            obstacle_idx = 4
 
             ## PROCESS ADVERSARY OBS
             # own_pos = obs[2:4]

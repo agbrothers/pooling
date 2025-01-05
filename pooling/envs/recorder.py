@@ -14,7 +14,18 @@ class RecordVideoMultiAgent(RecordVideo, MultiAgentEnv):
 
     """
 
-    def __init__(self, env: gym.Env, video_folder: str, episode_trigger: Callable[[int], bool] = None, step_trigger: Callable[[int], bool] = None, video_length: int = 0, name_prefix: str = "rl-video", disable_logger: bool = False):
+    def __init__(
+        self,
+        env: gym.Env,
+        video_folder: str,
+        episode_trigger: Callable[[int],
+        bool] = None,
+        step_trigger: Callable[[int],
+        bool] = None,
+        video_length: int = 0,
+        name_prefix: str = "rl-video",
+        disable_logger: bool = False
+    ):
         super().__init__(env, video_folder, episode_trigger, step_trigger, video_length, name_prefix, disable_logger)
         self.name_prefix = name_prefix + f"_{hex(id(self))}"
         ## TODO: Add reward to name prefix -> rename on close perhaps
