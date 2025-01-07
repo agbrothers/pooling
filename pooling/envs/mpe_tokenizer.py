@@ -1,12 +1,35 @@
 import numpy as np
-
 import gymnasium as gym
-
 from ray.rllib.env import PettingZooEnv
 
 
-def symlog(x):
-    return np.sign(x) * np.log(np.abs(x)+1)
+def reward_processor(pred_landmark_collision, pred_prey_collision):
+
+    def adversary_reward(agent, world):
+        # Predators are rewarded for collisions with prey
+        rew = 0
+        if not agent.collide:
+            return rew
+
+        prey_min = agent.size + world.agents[-1].size
+        landmark_min = agent.size + world.landmarks[-1].size
+
+        prey_pos = np.array([a.state.p_pos for a in world.agents if not a.adversary])
+        landmarks_pos = np.array([lm.state.p_pos for lm in world.landmarks])
+
+        ## COLLIDE WITH PREY 
+        prey_dist = np.linalg.norm(prey_pos - agent.state.p_pos, axis=1)
+        prey_collisions = prey_dist <= prey_min
+        rew += sum(prey_collisions*pred_prey_collision)
+        
+        ## COLLIDE WITH LANDMARK
+        landmarks_dist = np.linalg.norm(landmarks_pos - agent.state.p_pos, axis=1)
+        landmark_collisions = landmarks_dist <= landmark_min
+        rew += sum(landmark_collisions*pred_landmark_collision)
+        return rew
+    
+    return adversary_reward
+
 
 class TokenizedMPE(PettingZooEnv):
     def __init__(
@@ -14,6 +37,8 @@ class TokenizedMPE(PettingZooEnv):
             env, 
             mpe_config, 
             landmark_spawning, 
+            pred_landmark_collision=0,
+            pred_prey_collision=10,
             log_path=None,
             log_agents=None,
             log_rew=False,
@@ -50,6 +75,13 @@ class TokenizedMPE(PettingZooEnv):
             self.tokenizer = self.simple_tag_tokenizer
         elif env_name == "simple_cover_v3":
             pass
+
+        ## OVERRIDE ADVERSARY REWARD FUNCTION
+        if hasattr(env.unwrapped.scenario, "adversary_reward"):
+            env.unwrapped.scenario.adversary_reward = reward_processor(
+                pred_landmark_collision,
+                pred_prey_collision,
+            )
 
         ## COMPUTE NEW OBS SPACE
         sample_obs = {aid:np.zeros((s.shape)) for aid,s in env.unwrapped.observation_spaces.items()}
@@ -88,10 +120,12 @@ class TokenizedMPE(PettingZooEnv):
             info_dict.update(info)
             aid = list(reward.keys())[0]
             self.episode_reward[aid] += reward[aid]
-            # self.episode_reward[aid] += symlog(reward[aid])
+            
+            ## OVERRIDE REWARD
+            # self.env.unwrapped.world.agents
+
         obs_dict = self.tokenizer(obs_dict)
         rew_dict = {k:v for k,v in rew_dict.items()}
-        # rew_dict = {k:symlog(v) for k,v in rew_dict.items()}
         return obs_dict, rew_dict, term_dict, trun_dict, info_dict
     
     def reset(self, seed=None, options=None):
@@ -109,11 +143,24 @@ class TokenizedMPE(PettingZooEnv):
         # self.prev_episode_reward = self.episode_reward.copy()
         self.episode_reward = {aid:0. for aid in sorted(self._agent_ids)}
         info_dict = self.env.reset(seed=seed, options=options)
-        self.init_landmarks()
+        if hasattr(self.env.world, "agents"):
+            self.init_agents()
+        if hasattr(self.env.world, "landmarks"):
+            self.init_landmarks()
         obs_dict = {agent_id: self.env.observe(agent_id) for agent_id in self.env.agents}
         obs_dict = self.tokenizer(obs_dict)
         return obs_dict, info_dict or {}
     
+    def init_agents(self):
+        for agent in self.env.world.agents:
+            spawn_dist = np.log2(len(self.env.world.landmarks)) 
+            # agent.state.p_pos = np.random.normal(loc=spawn_dist, scale=spawn_dist, size=self.env.world.dim_p)            
+            agent.state.p_pos = np.random.uniform(-spawn_dist, +spawn_dist, self.env.world.dim_p)
+            agent.state.p_vel = np.random.uniform(-0.5, +0.5, self.env.world.dim_p)
+            agent.state.c = np.zeros(self.env.world.dim_c)        
+            # agent.state.p_pos = np_random.uniform(-1, +1, world.dim_p)
+            # agent.state.p_vel = np.zeros(self.env.world.dim_p)
+
     def init_landmarks(self):
         for i, landmark in enumerate(self.env.world.landmarks):
             if not landmark.boundary:
@@ -129,10 +176,10 @@ class TokenizedMPE(PettingZooEnv):
                     landmark.state.p_pos = np.random.uniform(-spawn_dist, +spawn_dist, self.env.world.dim_p)
                 ## OUT-OF-BOUNDS
                 elif self.landmark_spawning == "out_of_bounds":
-                    # ## UNIFORM
-                    # noise = 2*np.random.rand() - 1
-                    # landmark.state.p_pos = np.ones(self.env.world.dim_p) * 5. + (noise*1e-3)
-                    ## RADIAL
+                    noise = 2*np.random.rand() - 1
+                    landmark.state.p_pos = np.ones(self.env.world.dim_p) * 6. + (noise*1e-3)
+                # RADIAL
+                elif self.landmark_spawning == "radial":
                     r = 8.
                     theta = 2*np.pi*np.random.rand()
                     landmark.state.p_pos = np.array((r*np.sin(theta), r*np.cos(theta)))
@@ -203,6 +250,7 @@ class TokenizedMPE(PettingZooEnv):
                 tokens = np.vstack((tokens, good_tokens))
 
             tokens[:, 2:4] -= own_vel
+            # tokens[:, :4] *= 0.1
 
             token_dict[agent_id] = tokens
 
@@ -215,3 +263,5 @@ class TokenizedMPE(PettingZooEnv):
         with open(path.replace(".csv", f"_{self.id}.csv"), "a") as file:
         # with open(path, "w") as file:
             file.write(f"{value}\n")                
+
+
