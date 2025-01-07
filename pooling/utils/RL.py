@@ -4,7 +4,6 @@ import time
 import yaml
 import glob
 import torch
-import shutil
 import random
 import numpy as np
 
@@ -60,7 +59,7 @@ def configure_logging(config:dict, exp_dir:str=None, log_dir:str=None, eval:bool
     ## SET UP SAVE DIRECTORY
     if log_dir is None:
         method = config["MODEL_CONFIG"]["custom_model_config"].get("pooling_method", config["MODEL_CONFIG"]["custom_model"])
-        timestamp = time.strftime("%Y-%m-%d_%H-%M")
+        timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
         experiment_name = f"_{config['EXPERIMENT_NAME']}" if config['EXPERIMENT_NAME'] else ""
         log_dir = os.path.join(exp_dir, f"{method}{experiment_name}_{timestamp}")
 

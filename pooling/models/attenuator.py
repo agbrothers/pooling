@@ -9,7 +9,7 @@ from pooling.nn.pooling import (
     SumPool, 
     RelPool, 
     LrnPool,
-    AdaPool, 
+    # AdaPool, 
     CtrPool,
 )
 
@@ -94,10 +94,10 @@ class Attenuator(nn.Module):
         elif pooling_method == "RelPool":
             pooling_layer = RelPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=0) 
             self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
-        elif pooling_method == "AdaPool":
-            pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=0) 
-            self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
-            self._query = True
+        # elif pooling_method == "AdaPool":
+        #     pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=0) 
+        #     self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
+        #     self._query = True
         elif pooling_method == "LrnPool":
             pooling_layer = LrnPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
             # self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
