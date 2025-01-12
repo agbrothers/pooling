@@ -185,9 +185,10 @@ class TokenizedMPE(PettingZooEnv):
         return obs_dict, info_dict or {}
     
     def init_agents(self):
+        spawn_min = 0.1
+        spawn_max = np.log(len(self.env.world.agents)) /  np.log(4)
+        spawn_dist = np.random.uniform(low=spawn_min, high=spawn_max)
         for agent in self.env.world.agents:
-            spawn_max = max(1.5, np.log2(len(self.env.world.agents)))
-            spawn_dist = np.random.uniform(spawn_max)
             # agent.state.p_pos = np.random.normal(loc=spawn_dist, scale=spawn_dist, size=self.env.world.dim_p)            
             agent.state.p_pos = spawn_dist * np.random.uniform(-1., 1., self.env.world.dim_p)
             agent.state.p_vel = np.random.uniform(-0.5, +0.5, self.env.world.dim_p)
@@ -196,6 +197,7 @@ class TokenizedMPE(PettingZooEnv):
             # agent.state.p_vel = np.zeros(self.env.world.dim_p)
 
     def init_landmarks(self):
+        spawn_dist = np.log(len(self.env.world.landmarks)) /  np.log(4)
         for i, landmark in enumerate(self.env.world.landmarks):
             if not landmark.boundary:
                 ## ZERO VELOCITY
@@ -206,7 +208,6 @@ class TokenizedMPE(PettingZooEnv):
                     landmark.state.p_pos = np.random.uniform(-0.9, +0.9, self.env.world.dim_p)
                 ## SPREAD
                 elif self.landmark_spawning == "spread":
-                    spawn_dist = np.log2(len(self.env.world.landmarks))
                     landmark.state.p_pos = spawn_dist * np.random.uniform(-1., 1., self.env.world.dim_p)
                 ## OUT-OF-BOUNDS
                 elif self.landmark_spawning == "out_of_bounds":
