@@ -106,49 +106,14 @@ class Attenuator(nn.Module):
             pooling_layer = CtrPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
             self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
             self._query = True
-        # elif pooling_method == "learned_queries":
-        #     pooling_layer = LrnPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=3)
-        # elif pooling_method == "recurrent_query":
-        #     pooling_layer = RecurrentQueryPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, query_idx=0)
-        #     self._recurrent = True
-        #     self._query = True
         else:
             raise ValueError("Invalid `pooling_method` argument for AttenuationNetwork.")
 
         self.pool = pooling_layer
 
-        ## INITIALIZE WEIGHTS
-        # print(self.transformer.encoder.layers[0].ff.l_in.weight[0])
-        # torch.manual_seed(0)
-        # self.apply(self.initialize)
-        # print(self.transformer.encoder.layers[0].ff.l_in.weight[0])
-
         if seed:
             torch.manual_seed(seed)
             self.apply(self.initialize)
-
-        # self.pool.apply(self.initialize)
-        # if self.proj_in:
-        #     self.proj_in.apply(self.initialize)
-        # if self.proj_out:
-        #     self.proj_out.apply(self.initialize)
-        # if self.query_emb:
-        #     self.query_emb.apply(self.initialize)
-
-        # for name,param in self.named_parameters():
-        # #     if name.endswith("out.weight"):
-        # #         torch.nn.init.normal_(param, mean=0.0, std=0.02/math.sqrt(2 * num_layers))
-        #     if name.endswith("pool.attn.Q.weight"):
-        #         torch.nn.init.normal_(param, mean=0.0, std=0.0000002)
-        #     if name.endswith("pool.attn.KV.weight"):
-        #         # with torch.no_grad():
-        #         #     param[:dim_hidden] = torch.nn.Parameter(-self.pool.attn.Q.weight.clone().detach())
-        #         # torch.nn.init.normal_(param[:dim_hidden], mean=0.0, std=0.0002)
-        #         # torch.nn.init.eye_(param[:dim_hidden])
-        #         # torch.nn.init.eye_(param[:dim_hidden])
-        #         torch.nn.init.eye_(param[dim_hidden:])
-        #     elif name.endswith("pool.attn.out.weight"):
-        #         torch.nn.init.eye_(param)
         return
 
 
