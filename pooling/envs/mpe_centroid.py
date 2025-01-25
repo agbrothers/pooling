@@ -1,22 +1,11 @@
 # noqa: D212, D415
 """
-# Simple Tag [CUSTOMIZED]
+# Simple Centroid
 
 This environment is part of the <a href='..'>MPE environments</a>. Please read that page first for general information.
 
-This is a predator-signal environment. Prey agents (green) are faster and receive a negative reward for being hit by agents (red) (-10 for each collision). Predators are slower and are rewarded for hitting signal agents (+10 for each collision). Obstacle (large black circles) block the way. By
+This is a signal-noise attenuation benchmark environment. Prey agents (green) are faster and receive a negative reward for being hit by agents (red) (-10 for each collision). Predators are slower and are rewarded for hitting signal agents (+10 for each collision). Obstacle (large black circles) block the way. By
 default, there is 1 signal agent, 3 agents and 2 obstacle.
-
-So that signal agents don't run to infinity, they are also penalized for exiting the area by the following function:
-
-``` python
-def bound(x):
-      if x < 0.9:
-          return 0
-      if x < 1.0:
-          return (x - 0.9) * 10
-      return min(np.exp(2 * x - 2), 10)
-```
 
 Agent and adversary observations: `[self_vel, self_pos, obstacle_rel_positions, other_agent_rel_positions, other_agent_velocities]`
 
@@ -28,9 +17,9 @@ Agent and adversary action space: `[no_action, move_left, move_right, move_down,
 simple_tag_v3.env(num_signal=1, num_agents=3, num_noise=2, max_cycles=25, continuous_actions=False)
 ```
 
-`num_signal`:  number of signal agents
-
 `num_agents`:  number of agents
+
+`num_signal`:  number of signal agents
 
 `num_noise`:  number of obstacle
 
@@ -81,17 +70,27 @@ class raw_env(SimpleEnv, EzPickle):
         )
         self.metadata["name"] = "mpe_centroid"
 
+    def _execute_world_step(self):
+        ## SET RANDOM ACTIONS FOR SIGNAL ENTITIES
+        for agent in self.world.signal:
+            action = self.action_space("agent_0").sample()
+            scenario_action = []
+            if agent.movable:
+                mdim = self.world.dim_p * 2 + 1
+                if self.continuous_actions:
+                    scenario_action.append(action[0:mdim])
+                    action = action[mdim:]
+                else:
+                    scenario_action.append(action % mdim)
+                    action //= mdim
+            if not agent.silent:
+                scenario_action.append(action)
+            self._set_action(scenario_action, agent, None)
+        return super()._execute_world_step()
+
 
 env = make_env(raw_env)
 parallel_env = parallel_wrapper_fn(env)
-
-
-def bound(x):
-    if x < 0.9:
-        return 0
-    if x < 1.0:
-        return (x - 0.9) * 10
-    return min(np.exp(2 * x - 2), 10)
 
 
 class Scenario(BaseScenario):
@@ -138,11 +137,11 @@ class Scenario(BaseScenario):
         ## DEFAULT SIMPLE TAG INITIALIZEATION
         world = World()
         world.dim_c = 2
-        num_players = num_agents + num_signal
 
         ## INIT AGENTS
-        world.agents = [Agent() for i in range(num_players)]
-        for i, entity in enumerate(world.agents):
+        world.agents = [Agent() for i in range(num_agents)]
+        world.signal = [Agent() for i in range(num_signal)]
+        for i, entity in enumerate(world.agents + world.signal):
             entity.adversary = True if i < num_agents else False
             base_name = "agent" if entity.adversary else "signal"
             base_index = i if i < num_agents else i - num_agents
@@ -172,7 +171,7 @@ class Scenario(BaseScenario):
     def reset_world(self, world, np_random):
         ## SPAWN SIGNAL & AGENTS
         signal_spread = self.eps_s or max(np.log(self.num_entities) /  np.log(4), 2.0)
-        for entity in world.agents:   
+        for entity in world.agents + world.signal:   
             entity.state.p_pos = signal_spread * np.random.uniform(-1., 1., world.dim_p)
             entity.state.p_vel = np.random.uniform(-2., +2., world.dim_p)
             entity.state.c = np.zeros(world.dim_c)
@@ -195,14 +194,14 @@ class Scenario(BaseScenario):
         if not agent.adversary:
             return 0.0
         ## MINIMIZE DISTANCE TO THE SIGNAL CENTROID
-        signal_pos = np.array([a.state.p_pos for a in world.agents if not a.adversary])
+        signal_pos = np.array([a.state.p_pos for a in world.signal])
         signal_centroid = np.mean(signal_pos, axis=0)
         signal_centroid_dist = np.linalg.norm(agent.state.p_pos - signal_centroid)
         if self.rew_positive:
             rew = min(1.0, self.rew_coeff_centroid / (signal_centroid_dist**0.5))
         else:
-            # rew = -self.rew_coeff_centroid * (signal_centroid_dist**0.5)
             rew = -self.rew_coeff_centroid * (signal_centroid_dist**2)
+            # rew = -self.rew_coeff_centroid * (signal_centroid_dist**0.5)
             # rew = -signal_centroid_dist * self.rew_coeff_centroid
         return rew
         
@@ -215,7 +214,7 @@ class Scenario(BaseScenario):
                 tokens.append(
                     np.hstack((lm.state.p_pos, lm.state.p_vel, [self.noise_role]))
                 )        
-        for entity in world.agents:
+        for entity in world.agents + world.signal:
             if entity is agent: 
                 continue
             role = self.agent_role if entity.adversary else self.signal_role
