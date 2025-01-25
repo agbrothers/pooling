@@ -32,7 +32,7 @@ simple_tag_v3.env(num_signal=1, num_agents=3, num_noise=2, max_cycles=25, contin
 import numpy as np
 from gymnasium.utils import EzPickle
 
-from pettingzoo.mpe._mpe_utils.core import Agent, Landmark, World
+from pettingzoo.mpe._mpe_utils.core import Agent, Landmark, World, Action
 from pettingzoo.mpe._mpe_utils.scenario import BaseScenario
 from pettingzoo.mpe._mpe_utils.simple_env import SimpleEnv, make_env
 from pettingzoo.utils.conversions import parallel_wrapper_fn
@@ -70,28 +70,48 @@ class raw_env(SimpleEnv, EzPickle):
         )
         self.metadata["name"] = "mpe_centroid"
 
-    def _execute_world_step(self):
-        ## SET RANDOM ACTIONS FOR SIGNAL ENTITIES
-        for agent in self.world.signal:
-            action = self.action_space("agent_0").sample()
-            scenario_action = []
-            if agent.movable:
-                mdim = self.world.dim_p * 2 + 1
-                if self.continuous_actions:
-                    scenario_action.append(action[0:mdim])
-                    action = action[mdim:]
-                else:
-                    scenario_action.append(action % mdim)
-                    action //= mdim
-            if not agent.silent:
-                scenario_action.append(action)
-            self._set_action(scenario_action, agent, None)
-        return super()._execute_world_step()
+    # def _execute_world_step(self):
+    #     ## SET RANDOM ACTIONS FOR SIGNAL ENTITIES
+    #     for agent in self.world.signal:
+    #         d0 = 0.1
+    #         agent.theta += d0 * np.random.rand() * 2 * np.pi
+    #         agent.action.u = np.array((np.sin(agent.theta), np.cos(agent.theta))) * agent.accel
+    #     return super()._execute_world_step()
 
 
 env = make_env(raw_env)
 parallel_env = parallel_wrapper_fn(env)
 
+
+def random_heuristic(agent, world):
+    action = Action()
+    theta = np.random.rand() * 2 * np.pi
+    action.u = np.array((np.sin(theta), np.cos(theta))) * agent.accel    
+    return action
+
+
+# class SignalWorld(World):
+#     @property
+#     def entities(self):
+#         return self.agents + self.signal + self.landmarks
+
+#     # update state of the world
+#     def step(self):
+#         # set actions for scripted agents
+#         for agent in self.scripted_agents:
+#             agent.action = agent.action_callback(agent, self)
+#         # gather forces applied to entities
+#         p_force = [None] * len(self.entities)
+#         # apply agent physical controls
+#         p_force = self.apply_action_force(p_force)
+#         # apply environment forces
+#         p_force = self.apply_environment_force(p_force)
+#         # integrate physical state
+#         self.integrate_state(p_force)
+#         # update agent state
+#         for agent in self.agents + self.signal:
+#             self.update_agent_state(agent)
+#         return
 
 class Scenario(BaseScenario):
     def make_world(
@@ -139,25 +159,26 @@ class Scenario(BaseScenario):
         world.dim_c = 2
 
         ## INIT AGENTS
-        world.agents = [Agent() for i in range(num_agents)]
-        world.signal = [Agent() for i in range(num_signal)]
-        for i, entity in enumerate(world.agents + world.signal):
+        world.agents = [Agent() for _ in range(num_agents + num_signal)]
+        for i, entity in enumerate(world.agents):
             entity.adversary = True if i < num_agents else False
             base_name = "agent" if entity.adversary else "signal"
             base_index = i if i < num_agents else i - num_agents
             entity.name = f"{base_name}_{base_index}"
             entity.collide = collidable_agents if entity.adversary else collidable_signal
+            entity.action_callback = None if entity.adversary else random_heuristic
             entity.size = 0.075 if entity.adversary else 0.05
-            entity.accel = 3.0 if entity.adversary else 5.0
-            entity.max_speed = 6.0 
+            entity.accel = 5.0 if entity.adversary else 1.0
+            entity.max_speed = 5.0 if entity.adversary else 2.0
             entity.silent = True
+            entity.theta = 0
             entity.color = (
                 np.array([0.35, 0.85, 0.35])
                 if not entity.adversary
                 else np.array([0.85, 0.35, 0.35])
             )
         ## ADD LANDMARKS
-        world.landmarks = [Landmark() for i in range(num_noise)]
+        world.landmarks = [Landmark() for _ in range(num_noise)]
         for i, noise in enumerate(world.landmarks):
             noise.name = "noise %d" % i
             noise.collide = collidable_noise
@@ -171,7 +192,7 @@ class Scenario(BaseScenario):
     def reset_world(self, world, np_random):
         ## SPAWN SIGNAL & AGENTS
         signal_spread = self.eps_s or max(np.log(self.num_entities) /  np.log(4), 2.0)
-        for entity in world.agents + world.signal:   
+        for entity in world.agents:   
             entity.state.p_pos = signal_spread * np.random.uniform(-1., 1., world.dim_p)
             entity.state.p_vel = np.random.uniform(-2., +2., world.dim_p)
             entity.state.c = np.zeros(world.dim_c)
@@ -181,7 +202,7 @@ class Scenario(BaseScenario):
         
         ## SPAWN NOISE
         noise_spread = self.eps_n or max(np.log(self.num_entities) /  np.log(4), 2.0)
-        distance = np.random.rand() * self.M + 0.5*signal_spread + 0.5*noise_spread
+        distance = np.random.rand() * self.M # + 0.5*signal_spread + 0.5*noise_spread
         theta = np.random.rand() * 2 * np.pi
         direction = np.array((np.sin(theta), np.cos(theta))) * distance
         for noise in world.landmarks:
@@ -194,14 +215,14 @@ class Scenario(BaseScenario):
         if not agent.adversary:
             return 0.0
         ## MINIMIZE DISTANCE TO THE SIGNAL CENTROID
-        signal_pos = np.array([a.state.p_pos for a in world.signal])
+        signal_pos = np.array([a.state.p_pos for a in world.agents if not a.adversary])
         signal_centroid = np.mean(signal_pos, axis=0)
         signal_centroid_dist = np.linalg.norm(agent.state.p_pos - signal_centroid)
         if self.rew_positive:
             rew = min(1.0, self.rew_coeff_centroid / (signal_centroid_dist**0.5))
         else:
-            rew = -self.rew_coeff_centroid * (signal_centroid_dist**2)
-            # rew = -self.rew_coeff_centroid * (signal_centroid_dist**0.5)
+            # rew = -self.rew_coeff_centroid * (signal_centroid_dist**2)
+            rew = -self.rew_coeff_centroid * (signal_centroid_dist**0.5)
             # rew = -signal_centroid_dist * self.rew_coeff_centroid
         return rew
         
@@ -214,7 +235,7 @@ class Scenario(BaseScenario):
                 tokens.append(
                     np.hstack((lm.state.p_pos, lm.state.p_vel, [self.noise_role]))
                 )        
-        for entity in world.agents + world.signal:
+        for entity in world.agents:
             if entity is agent: 
                 continue
             role = self.agent_role if entity.adversary else self.signal_role
