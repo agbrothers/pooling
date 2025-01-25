@@ -34,6 +34,7 @@ class Attenuator(nn.Module):
             pos_emb=False,
             pooling_norm=False,
             pooling_method="RelPool",
+            query_idx=0,
             seed=None,
             **kwargs,
         ) -> None: 
@@ -53,6 +54,7 @@ class Attenuator(nn.Module):
         self._bias_ff = bias_ff,
         self._pooling_norm = pooling_norm
         self._pooling_method = pooling_method
+        self._query_idx=query_idx
         self._flash = flash
         self._query = False
         self._recurrent = False
@@ -92,7 +94,7 @@ class Attenuator(nn.Module):
         elif pooling_method == "SumPool":
             pooling_layer = SumPool(dim_hidden, pooling_norm)
         elif pooling_method == "RelPool":
-            pooling_layer = RelPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=0) 
+            pooling_layer = RelPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=query_idx) 
             self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
         # elif pooling_method == "AdaPool":
         #     pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=0) 

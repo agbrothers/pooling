@@ -184,6 +184,7 @@ class TokenActorCritic(nn.Module):
             output_head_pi_dim=None,
             output_head_vf_dim=None,            
             share_layers=True, 
+            weight_scale=0.2,
             seed=None,
             **kwargs
         ):
@@ -204,6 +205,7 @@ class TokenActorCritic(nn.Module):
         self._dim_input = self.embd._dim_input
         self._idx_mask = idx_mask
         self._share_layers = share_layers
+        self._weight_scale = weight_scale
 
         ## INPUT PROJECTION LAYERS AND OUTPUT HEADS
         self.has_input_layer_pi = input_layer_pi
@@ -307,7 +309,7 @@ class TokenActorCritic(nn.Module):
         """
         ## LINEAR LAYERS
         if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.2)
+            torch.nn.init.normal_(module.weight, mean=0.0, std=self._weight_scale)
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         ## LAYERNORMS
@@ -316,7 +318,7 @@ class TokenActorCritic(nn.Module):
             torch.nn.init.ones_(module.weight)
         ## EMBEDDING WEIGHTS
         elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.2)
+            torch.nn.init.normal_(module.weight, mean=0.0, std=self._weight_scale)
         return
 
 
