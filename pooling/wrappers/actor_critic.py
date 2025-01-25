@@ -128,7 +128,7 @@ class ActorCritic(nn.Module):
 
         ## CLAMP CONTINUOUS LOG STD PREDICTIONS TO PREVENT OVERFLOW DURING SAMPLING
         if self._continuous_actions:
-            action_logits[self._idx_log_std:] = torch.clamp_(action_logits[self._idx_log_std:], min=-1.0, max=1.0) 
+            action_logits[..., self._idx_log_std:] = torch.clamp_(action_logits[..., self._idx_log_std:], min=-1.0, max=1.0) 
         return action_logits
 
     def value_function(self) -> Tensor:
@@ -292,7 +292,7 @@ class TokenActorCritic(nn.Module):
 
         ## CLAMP CONTINUOUS LOG STD PREDICTIONS TO PREVENT OVERFLOW DURING SAMPLING
         if self._continuous_actions:
-            action_logits[self._idx_log_std:] = torch.clamp_(action_logits[self._idx_log_std:], min=-1.0, max=1.0) 
+            action_logits[..., self._idx_log_std:] = torch.clamp_(action_logits[..., self._idx_log_std:], min=-1.0, max=1.0) 
         return action_logits
 
     def value_function(self) -> Tensor:
