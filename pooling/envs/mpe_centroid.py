@@ -4,10 +4,10 @@
 
 This environment is part of the <a href='..'>MPE environments</a>. Please read that page first for general information.
 
-This is a predator-prey environment. Prey agents (green) are faster and receive a negative reward for being hit by predators (red) (-10 for each collision). Predators are slower and are rewarded for hitting prey agents (+10 for each collision). Obstacle (large black circles) block the way. By
-default, there is 1 prey agent, 3 predators and 2 obstacle.
+This is a predator-signal environment. Prey agents (green) are faster and receive a negative reward for being hit by agents (red) (-10 for each collision). Predators are slower and are rewarded for hitting signal agents (+10 for each collision). Obstacle (large black circles) block the way. By
+default, there is 1 signal agent, 3 agents and 2 obstacle.
 
-So that prey agents don't run to infinity, they are also penalized for exiting the area by the following function:
+So that signal agents don't run to infinity, they are also penalized for exiting the area by the following function:
 
 ``` python
 def bound(x):
@@ -25,14 +25,14 @@ Agent and adversary action space: `[no_action, move_left, move_right, move_down,
 ### Arguments
 
 ``` python
-simple_tag_v3.env(num_prey=1, num_predators=3, num_obstacles=2, max_cycles=25, continuous_actions=False)
+simple_tag_v3.env(num_signal=1, num_agents=3, num_noise=2, max_cycles=25, continuous_actions=False)
 ```
 
-`num_prey`:  number of prey agents
+`num_signal`:  number of signal agents
 
-`num_predators`:  number of predators
+`num_agents`:  number of agents
 
-`num_obstacles`:  number of obstacle
+`num_noise`:  number of obstacle
 
 `max_cycles`:  number of frames (a step for each agent) until game terminates
 
@@ -52,25 +52,25 @@ from pettingzoo.utils.conversions import parallel_wrapper_fn
 class raw_env(SimpleEnv, EzPickle):
     def __init__(
         self,
-        num_prey=1,
-        num_predators=3,
-        num_obstacles=2,
-        max_cycles=25,
+        num_agents=1,
+        num_signal=8,
+        num_noise=8,
+        max_cycles=128,
         continuous_actions=False,
         render_mode=None,
         **kwargs,
     ):
         EzPickle.__init__(
             self,
-            num_prey=num_prey,
-            num_predators=num_predators,
-            num_obstacles=num_obstacles,
+            num_signal=num_signal,
+            num_agents=num_agents,
+            num_noise=num_noise,
             max_cycles=max_cycles,
             continuous_actions=continuous_actions,
             render_mode=render_mode,
         )
         scenario = Scenario()
-        world = scenario.make_world(num_prey, num_predators, num_obstacles, **kwargs)
+        world = scenario.make_world(num_agents, num_signal, num_noise, **kwargs)
         SimpleEnv.__init__(
             self,
             scenario=scenario,
@@ -97,154 +97,128 @@ def bound(x):
 class Scenario(BaseScenario):
     def make_world(
             self, 
-            num_prey=1, 
-            num_predators=3, 
-            num_obstacles=2, 
+            num_agents=1, 
+            num_signal=8, 
+            num_noise=8, 
+            M = 3.0,
+            eps_s=None,
+            eps_n=None,
             rew_coeff_centroid=0.2,
-            rew_pred_hit_obstacle=0.0,
-            collidable_pred=False,
-            collidable_prey=True,
-            collidable_obstacles=True,
+            rew_positive=False,
+            collidable_agents=False,
+            collidable_signal=True,
+            collidable_noise=True,
             norm_constant=1.0,
-            obstacle_ics="spread",
             **kwargs
         ):
         ## SET ENTITY AND FEATURE COUNT
-        self.num_entities = num_prey + num_predators + num_obstacles
+        self.num_entities = num_agents + num_signal + num_noise
         self.num_features = 5  # FEATURES PER TOKEN: [x, y, vx, vy, role]
-        self.predators = None
-        self.prey = None
+        self.agents = None
+        self.signal = None
+
+        ## PARAMETERS FOR SIGNAL AND NOISE DISTRIBUTIONS
+        self.eps_s = eps_s
+        self.eps_n = eps_n
+        self.M = M
         
         ## ROLE IDXS            # ROLE INTERPRETATION
         self.own_role = 0       # This token is my state
-        self.obstacle_role = 1  # This token is an obstacle's state
-        self.pred_role = 2      # This token is an predator's state
-        self.prey_role = 3      # This token is an prey's state
+        self.agent_role = 1     # This token is an agent's state
+        self.signal_role = 2    # This token is an signal entity's state
+        self.noise_role = 3     # This token is an noise entity's state
 
         ## CUSTOM REWARD ARGUMENTS
-        self.rew_pred_hit_obstacle = rew_pred_hit_obstacle
         self.rew_coeff_centroid = rew_coeff_centroid
+        self.rew_positive = rew_positive
         
         ## CONSTANT FOR OBS NORMALIZATION
         self.norm_constant = norm_constant
 
-        ## CUSTOM INITIAL CONDITIONS
-        self.obstacle_ics = obstacle_ics
-
         ## DEFAULT SIMPLE TAG INITIALIZEATION
         world = World()
         world.dim_c = 2
-        num_prey_agents = num_prey
-        num_agents = num_predators + num_prey_agents
-        
+        num_players = num_agents + num_signal
+
         ## INIT AGENTS
-        world.agents = [Agent() for i in range(num_agents)]
-        for i, agent in enumerate(world.agents):
-            agent.adversary = True if i < num_predators else False
-            base_name = "adversary" if agent.adversary else "agent"
-            base_index = i if i < num_predators else i - num_predators
-            agent.name = f"{base_name}_{base_index}"
-            agent.collide = collidable_pred if agent.adversary else collidable_prey
-            agent.silent = True
-            agent.size = 0.075 if agent.adversary else 0.05
-            agent.accel = 6.0 #3.0 if agent.adversary else 4.0
-            agent.max_speed = 3.0 #1.0 if agent.adversary else 1.3
-            agent.color = (
+        world.agents = [Agent() for i in range(num_players)]
+        for i, entity in enumerate(world.agents):
+            entity.adversary = True if i < num_agents else False
+            base_name = "agent" if entity.adversary else "signal"
+            base_index = i if i < num_agents else i - num_agents
+            entity.name = f"{base_name}_{base_index}"
+            entity.collide = collidable_agents if entity.adversary else collidable_signal
+            entity.size = 0.075 if entity.adversary else 0.05
+            entity.accel = 3.0 if entity.adversary else 5.0
+            entity.max_speed = 6.0 
+            entity.silent = True
+            entity.color = (
                 np.array([0.35, 0.85, 0.35])
-                if not agent.adversary
+                if not entity.adversary
                 else np.array([0.85, 0.35, 0.35])
-            )        
+            )
         ## ADD LANDMARKS
-        world.landmarks = [Landmark() for i in range(num_obstacles)]
-        for i, obstacle in enumerate(world.landmarks):
-            obstacle.name = "obstacle %d" % i
-            obstacle.collide = collidable_obstacles
-            obstacle.movable = False
-            obstacle.size = 0.2
-            obstacle.boundary = False
-            obstacle.color = np.array([0.25, 0.25, 0.25])
+        world.landmarks = [Landmark() for i in range(num_noise)]
+        for i, noise in enumerate(world.landmarks):
+            noise.name = "noise %d" % i
+            noise.collide = collidable_noise
+            noise.size = 0.05
+            noise.movable = False
+            noise.boundary = False
+            noise.color = np.array([0.25, 0.25, 0.25])
         return world
 
 
     def reset_world(self, world, np_random):
-        ## TODO: ALLOW FOR RESETTING RANDOM NUMBERS OF ENTITIES TYPES
-        self.spawn_agents(world)
-        self.spawn_obstacles(world)
+        ## SPAWN SIGNAL & AGENTS
+        signal_spread = self.eps_s or max(np.log(self.num_entities) /  np.log(4), 2.0)
+        for entity in world.agents:   
+            entity.state.p_pos = signal_spread * np.random.uniform(-1., 1., world.dim_p)
+            entity.state.p_vel = np.random.uniform(-2., +2., world.dim_p)
+            entity.state.c = np.zeros(world.dim_c)
 
-
-    def spawn_agents(self, world):
-        spawn_min = 0.1
-        spawn_max = np.log(len(world.agents)) /  np.log(4)
-        spawn_dist = np.random.uniform(low=spawn_min, high=spawn_max)
-        for agent in world.agents:   
-            agent.state.p_pos = spawn_dist * np.random.uniform(-1., 1., world.dim_p)
-            agent.state.p_vel = np.random.uniform(-0.5, +0.5, world.dim_p)
-            agent.state.c = np.zeros(world.dim_c)        
-        return
-
-
-    def spawn_obstacles(self, world):
         if len(world.landmarks) == 0:
             return
-        spawn_dist = max(np.log(len(world.landmarks)) /  np.log(4), 2.0)
-        for i, obstacle in enumerate(world.landmarks):
-            ## ZERO VELOCITY
-            obstacle.state.p_vel = np.zeros(world.dim_p)         
-            ## DEFAULT SPAWNING 
-            if self.obstacle_ics == "default":
-                obstacle.state.p_pos = np.random.uniform(-0.9, +0.9, world.dim_p)
-            ## SPREAD
-            elif self.obstacle_ics == "spread":
-                obstacle.state.p_pos = spawn_dist * np.random.uniform(-1., 1., world.dim_p)
-            ## OUT-OF-BOUNDS
-            elif self.obstacle_ics == "out_of_bounds":
-                noise = 2*np.random.rand() - 1
-                obstacle.state.p_pos = np.ones(world.dim_p) * 6. + (noise*1e-3)
-            ## RADIAL
-            elif self.obstacle_ics == "radial":
-                r = 8.
-                theta = 2*np.pi*np.random.rand()
-                obstacle.state.p_pos = np.array((r*np.sin(theta), r*np.cos(theta)))
-            ## ORIGIN
-            elif self.obstacle_ics == "origin":
-                obstacle.state.p_pos = np.zeros(world.dim_p)
+        
+        ## SPAWN NOISE
+        noise_spread = self.eps_n or max(np.log(self.num_entities) /  np.log(4), 2.0)
+        distance = np.random.rand() * self.M + 0.5*signal_spread + 0.5*noise_spread
+        theta = np.random.rand() * 2 * np.pi
+        direction = np.array((np.sin(theta), np.cos(theta))) * distance
+        for noise in world.landmarks:
+            noise.state.p_vel = np.zeros(world.dim_p)         
+            noise.state.p_pos = direction + noise_spread * np.random.uniform(-1., 1., world.dim_p)
         return
     
 
     def reward(self, agent, world):
-        return self.centroid_reward(agent, world) if agent.adversary else 0.0
-
-    def centroid_reward(self, agent, world):
-        ## MINIMIZE DISTANCE TO THE PREY CENTROID
-        prey_pos = np.array([a.state.p_pos for a in world.agents if not a.adversary])
-        prey_centroid = np.mean(prey_pos, axis=0)
-        prey_centroid_dist = np.linalg.norm(agent.state.p_pos - prey_centroid)
-        # rew = min(1.0, self.rew_coeff_centroid / (prey_centroid_dist**0.5))
-        rew = -prey_centroid_dist * self.rew_coeff_centroid
-        
-        ## COLLIDE WITH LANDMARK
-        if self.rew_pred_hit_obstacle != 0 and len(world.landmarks) > 0:
-            obstacle_min = agent.size + world.landmarks[-1].size
-            obstacles_pos = np.array([lm.state.p_pos for lm in world.landmarks])
-            obstacles_dist = np.linalg.norm(obstacles_pos - agent.state.p_pos, axis=1)
-            obstacle_collisions = obstacles_dist <= obstacle_min
-            rew += sum(obstacle_collisions*self.rew_pred_hit_obstacle)
+        if not agent.adversary:
+            return 0.0
+        ## MINIMIZE DISTANCE TO THE SIGNAL CENTROID
+        signal_pos = np.array([a.state.p_pos for a in world.agents if not a.adversary])
+        signal_centroid = np.mean(signal_pos, axis=0)
+        signal_centroid_dist = np.linalg.norm(agent.state.p_pos - signal_centroid)
+        if self.rew_positive:
+            rew = min(1.0, self.rew_coeff_centroid / (signal_centroid_dist**0.5))
+        else:
+            # rew = -self.rew_coeff_centroid * (signal_centroid_dist**0.5)
+            rew = -self.rew_coeff_centroid * (signal_centroid_dist**2)
+            # rew = -signal_centroid_dist * self.rew_coeff_centroid
         return rew
         
+
     def observation(self,agent, world):
         own_token = np.hstack((agent.state.p_pos, agent.state.p_vel, [self.own_role]))
         tokens = [own_token]
-
         for lm in world.landmarks:
             if not lm.boundary:
                 tokens.append(
-                    np.hstack((lm.state.p_pos, lm.state.p_vel, [self.obstacle_role]))
+                    np.hstack((lm.state.p_pos, lm.state.p_vel, [self.noise_role]))
                 )        
-        
         for entity in world.agents:
             if entity is agent: 
                 continue
-            role = self.pred_role if entity.adversary else self.prey_role
+            role = self.agent_role if entity.adversary else self.signal_role
             tokens.append(
                 np.hstack((entity.state.p_pos, entity.state.p_vel, [role]))
             )  
