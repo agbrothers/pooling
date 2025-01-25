@@ -1,9 +1,9 @@
 """Wrapper for recording videos."""
-from typing import Callable
-from ray.rllib.env import MultiAgentEnv
-from gymnasium.wrappers.record_video import RecordVideo
 import gymnasium as gym
+from gymnasium.wrappers.record_video import RecordVideo
 from gymnasium.logger import set_level
+from ray.rllib.env import MultiAgentEnv
+from typing import Callable
 set_level(40)
 
 class RecordVideoMultiAgent(RecordVideo, MultiAgentEnv):
@@ -59,10 +59,6 @@ class RecordVideoMultiAgent(RecordVideo, MultiAgentEnv):
                 self.recorded_frames += 1
                 if self.video_length > 0:
                     if self.recorded_frames > self.video_length:
-                        # self.video_recorder.path = os.path.join(
-                        #     self.video_recorder.path,
-                        #     reward,
-                        # )
                         self.close_video_recorder()
                 else:
                     if not self.is_vector_env:
@@ -79,3 +75,4 @@ class RecordVideoMultiAgent(RecordVideo, MultiAgentEnv):
     def close(self):
         super().close()
         return 
+    

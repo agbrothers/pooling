@@ -6,6 +6,7 @@ from pettingzoo.mpe import simple_tag_v3
 
 from pooling.envs import mpe_tag
 from pooling.envs import mpe_centroid
+from pooling.envs.boxworld import BoxWorldRllib
 from pooling.envs.recorder import RecordVideoMultiAgent
 from pooling.heuristics.random import RandomHeuristic
 # from pooling.envs.mpe_tokenizer import TokenizedMPE
@@ -76,5 +77,17 @@ def configure_mpe(config):
         disable_logger=True,            
     )
 
+def configure_boxworld(config):
+    ## CREATE ENV
+    return RecordVideoMultiAgent(
+        BoxWorldRllib(**config),
+        video_folder=config["video_dir"], 
+        video_length=-1, #config["max_steps"],
+        episode_trigger=lambda t: t % config["episodes_per_recording"] == 0 and t > 0, 
+        disable_logger=True,            
+    )
+
+
 register_env("mpe_tag", configure_mpe)
 register_env("mpe_centroid", configure_mpe)
+register_env("boxworld", configure_boxworld)
