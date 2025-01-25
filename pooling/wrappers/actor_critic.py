@@ -28,6 +28,7 @@ class ActorCritic(nn.Module):
             output_head_vf_layers=2,
             output_head_pi_dim=None,
             output_head_vf_dim=None,
+            continuous_actions=False, 
             share_layers=True, 
             seed=None,
             **kwargs
@@ -45,8 +46,10 @@ class ActorCritic(nn.Module):
         ## PARSE CONFIG
         self._dim_input = dim_input
         self._dim_action = dim_action
-        self._idx_mask = idx_mask
         self._share_layers = share_layers
+        self._continuous_actions = continuous_actions
+        self._idx_log_std = dim_action // 2
+        self._idx_mask = idx_mask
 
         ## INPUT PROJECTION LAYERS AND OUTPUT HEADS
         self.has_input_layer_pi = input_layer_pi
@@ -123,9 +126,9 @@ class ActorCritic(nn.Module):
         embd_vf = self.vf(input_vf) if self.vf else embd_pi.clone()
         action_logits, self.value = self.output(embd_pi, embd_vf)
 
-        ## SCALE VALUE PREDICTION
-        # self.value = symexp(self.value)
-
+        ## CLAMP CONTINUOUS LOG STD PREDICTIONS TO PREVENT OVERFLOW DURING SAMPLING
+        if self._continuous_actions:
+            action_logits[self._idx_log_std:] = torch.clamp_(action_logits[self._idx_log_std:], min=-1.0, max=1.0) 
         return action_logits
 
     def value_function(self) -> Tensor:
@@ -182,7 +185,8 @@ class TokenActorCritic(nn.Module):
             output_head_pi_layers=2,
             output_head_vf_layers=2,
             output_head_pi_dim=None,
-            output_head_vf_dim=None,            
+            output_head_vf_dim=None,     
+            continuous_actions=False,        
             share_layers=True, 
             weight_scale=0.2,
             seed=None,
@@ -203,9 +207,11 @@ class TokenActorCritic(nn.Module):
         self._dim_token = dim_token
         self._dim_action = dim_action
         self._dim_input = self.embd._dim_input
-        self._idx_mask = idx_mask
         self._share_layers = share_layers
         self._weight_scale = weight_scale
+        self._continuous_actions = continuous_actions
+        self._idx_log_std = dim_action // 2
+        self._idx_mask = idx_mask
 
         ## INPUT PROJECTION LAYERS AND OUTPUT HEADS
         self.has_input_layer_pi = input_layer_pi
@@ -283,6 +289,10 @@ class TokenActorCritic(nn.Module):
         embd_pi = self.pi(input_pi)
         embd_vf = self.vf(input_vf) if self.vf else embd_pi.clone()
         action_logits, self.value = self.output(embd_pi, embd_vf)
+
+        ## CLAMP CONTINUOUS LOG STD PREDICTIONS TO PREVENT OVERFLOW DURING SAMPLING
+        if self._continuous_actions:
+            action_logits[self._idx_log_std:] = torch.clamp_(action_logits[self._idx_log_std:], min=-1.0, max=1.0) 
         return action_logits
 
     def value_function(self) -> Tensor:
