@@ -1,0 +1,132 @@
+EXPERIMENT_NAME: "simple-centroid-1v31v0"
+
+LEARNING_PARAMETERS: 
+  LEARNING_RATE: &learning_rate 2.5e-3 
+  BATCH_SIZE: &batch_size 4096 
+  LEN_EPISODES: &len_episodes 128 
+  LEN_ROLLOUT: &len_rollout 128 
+  NUM_TRAIN_EPISODES: &num_train_episodes 250 
+  NUM_EVAL_EPISODES: &num_eval_episodes 1
+  NUM_SGD_ITER: &num_sgd_iter 16
+  NUM_WORKERS: &num_workers 16 # BATCH_SIZE // LEN_EPISODES
+  NUM_ENVS_PER_WORKER: &num_envs_per_worker 2
+  NUM_GPUS: &num_gpus 1
+  COUNT_STEPS_BY: env_steps #agent_steps 
+  NUM_EXPERIMENTS: 10 
+  EVAL: False 
+  DEBUG: False 
+
+POLICIES:
+  attenuator: ppo
+
+POLICIES_TO_TRAIN:
+  - attenuator
+
+POLICIES_TO_LOG:
+  - attenuator
+
+AGENT_TO_POLICY:
+  agent_0: attenuator
+
+ENV_CONFIG: &env
+  env_id: &env_id mpe_centroid
+  episodes_per_recording: 10000
+  rew_coeff_centroid: 0.01
+  rew_negative: True
+  norm_constant: 5.0
+  num_agents: 1 
+  num_signal: 31 
+  num_noise: 0 
+  M: 1.0
+  max_cycles: *len_episodes 
+  continuous_actions: &continuous_actions True
+  render_mode: rgb_array
+
+MODEL_CONFIG:
+  # === Options for custom models ===
+  # Name of a custom model to use
+  custom_model: Attenuator
+  # POLICY AND VALUE FUNCTION BODIES SHARE THE SAME LAYERS
+  vf_share_layers: True
+  # Extra options to pass to the custom classes. These will be available to
+  # the Model's constructor in the model_config field. Also they will be
+  # attempted to be passed as **kwargs to ModelV2 models. For an example
+  # see rllib/models/[tf|torch]/attention_net.py.
+  custom_model_config: 
+      # === WRAPPER PARAMETERS === #
+      use_gpu: True
+      input_layer_pi: True # Project input to hidden dim before policy
+      output_head_pi: True  # Map policy output to num actions
+      output_head_pi_layers: 3
+      output_head_pi_dim: 32
+      input_layer_vf: False # Project input to hidden dim before value func
+      output_head_vf: True  # Map value func output to scalar
+      output_head_vf_layers: 3
+      output_head_vf_dim: 32
+      continuous_actions: *continuous_actions
+      # === MODEL PARAMETERS === #
+      num_layers: 3 
+      num_heads: 8
+      dim_hidden: 8
+      dim_ff: 32 
+      dim_embd: 4 
+      num_embd: 4 
+      dropout_w: 0.0 
+      dropout_e: 0.0 
+      dropout_ff: 0.1 
+      bias_attn: False 
+      bias_ff: True
+      idx_embd: -1 
+      flash: True # Use flash attention implementation
+      pooling_method: AvgPool 
+      # pooling_method: MaxPool 
+      # pooling_method: AdaPool 
+      # pooling_method: ClsToken 
+
+PPO_CONFIG:
+  env: *env_id
+  env_config: *env 
+  num_gpus: *num_gpus 
+  num_env_runners: *num_workers 
+  rollout_fragment_length: *len_rollout  
+  train_batch_size: *batch_size 
+  sgd_minibatch_size: *batch_size 
+  shuffle_sequences: True
+  num_sgd_iter: *num_sgd_iter 
+  batch_mode: truncate_episodes
+  framework: torch
+  num_envs_per_env_runner: *num_envs_per_worker 
+  num_cpus_per_env_runner: 1
+  lr: *learning_rate 
+  gamma: 0.99 
+  lambda: 0.95
+  kl_coeff: 0.0 
+  kl_target: 0.01
+  vf_loss_coeff: 0.05 
+  entropy_coeff: 0.0 
+  use_critic: True
+  use_gae: True
+  grad_clip: 10.0
+  clip_param: 0.2
+  vf_clip_param: 100_000.0
+  horizon: *len_episodes
+  log_level: ERROR
+  keep_per_episode_custom_metrics: True
+  metrics_num_episodes_for_smoothing: 16 
+  record_env: False 
+  enable_rl_module_and_learner: False
+  enable_env_runner_and_connector_v2: False
+  # Training rounds per eval round
+  evaluation_interval: 16 
+  # Num episodes in eval round
+  evaluation_duration: 1 
+  evaluation_duration_unit: episodes 
+  evaluation_num_env_runners: 0 
+  evaluation_config: 
+      record_env: False 
+      explore: False 
+      keep_per_episode_custom_metrics: True
+      num_envs_per_env_runner: 1 
+      env_config: 
+        <<: *env
+        episodes_per_recording: 1
