@@ -6,9 +6,9 @@ from pooling.nn.attention import MultiHeadAttention
 from pooling.nn.transformer import FeedForward
 
 
-class Aggregation(nn.Module):
+class Pool(nn.Module):
     """
-    Aggregation Layer Base Class
+    Pool Layer Base Class
     
     """
 
@@ -22,7 +22,7 @@ class Aggregation(nn.Module):
         raise NotImplementedError
 
 
-class MaxPool(Aggregation):
+class MaxPool(Pool):
     """
     Take the max value per feature over the embeddings. 
     
@@ -34,7 +34,7 @@ class MaxPool(Aggregation):
         return x.max(dim=self.dim)[0]
 
 
-class AvgPool(Aggregation):
+class AvgPool(Pool):
     """
     DESC: 
     Take the average value per feature over the embeddings. 
@@ -47,12 +47,12 @@ class AvgPool(Aggregation):
         return x.mean(dim=self.dim)
 
 
-class SumPool(Aggregation):
+class SumPool(Pool):
     """
+    DESC: 
     Take the sum of values per feature over the embeddings. 
     
     """
-
     def __init__(self, dim_hidden=None, norm=False, **kwargs):
         super().__init__(dim=-2)
         self.norm = nn.LayerNorm(dim_hidden) if norm else None
@@ -65,12 +65,12 @@ class SumPool(Aggregation):
         return pool
 
 
-class RelPool(Aggregation): 
+class AdaPool(Pool): 
     """
     DESC: 
-    Compute a weighted average per head over the embeddings using attention. 
-    The embedding of the agent's own state is used as a query to learn a 
-    relational aggregation over the entity state embeddings. 
+    Compute a weighted average per head over the input vectors using attention. 
+    By default, one of the input vectors is chosen is used as a query to compute
+    the relational weights via dot product with respect to the other input vectos. 
     
     """
 
@@ -85,158 +85,57 @@ class RelPool(Aggregation):
         query = x[:, self.query_idx] 
         residual = self.attn(query, x, mask)
         return query + residual
-        # return residual
     
 
-class LrnPool(Aggregation): 
+class ClsToken(Pool): 
     """
     DESC: 
-    Compute a weighted average per head over the embeddings using attention. 
-    A configurable k learned parameter vectors are used as queries and the resulting
-    k attended embeddings are flattened and returned. 
+    Learn a weighted embedding to be appended to the transformer input,
+    then pluck the contextualized embedding from the transformer output.
     
     """
 
     def __init__(self, dim_hidden, num_heads, dropout_w=0, dropout_e=0, bias=False, flash=True, query_idx=0, k=1, **kwargs):
         super().__init__(dim=-2)
         self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias)
-        self.query = nn.Parameter(torch.rand(1, k, dim_hidden))
-        self.query_idx = query_idx
+        self.cls_token = nn.Parameter(torch.rand(1, k, dim_hidden))
+        self.cls_token_idx = query_idx
         self.k = k
         self.expand = None
-        # self.query_batch = None
 
     def forward(self, x:Tensor, mask:BoolTensor=None):  
-        return x[:, self.query_idx]
+        return x[:, self.cls_token_idx]
 
     def get_query(self, x, **kwargs):
         bs = x.size(0)
-        return self.query.expand((bs,-1,-1))
-        
-        # return torch.tile(self.query, (bs, 1, 1))
-
-        # k = x.size(1)
-
-        # if self.expand is None or k != self.expand.weight.size(1):
-        #     self.expand = torch.empty(k+1, k, dtype=x.dtype, device=x.device)
-        #     self.expand[self.query_idx] = 0
-        #     self.expand[self.query_idx+1:] = torch.eye(k)
-        # x = torch.einsum("nk,bkd->bnd", self.expand.detach(), x)
-
-        # if self.expand is None or k != self.expand.weight.size(1):
-        #     self.expand = nn.Linear(k, k+1, device=x.device, bias=False)
-        #     self.expand.weight.requires_grad = False
-        #     self.expand.weight[self.query_idx] = 0.
-        #     self.expand.weight[self.query_idx+1:] = torch.eye(k)
-        # x = self.expand(x.transpose(1,2)).transpose(1,2) #[0] #,:,0]
-
-        # x[:, self.query_idx] = self.query
-        # return x
-    
+        return self.cls_token.expand((bs,-1,-1))
 
 
-class CtrPool(Aggregation): 
+class CtrPool(AdaPool): 
     """
     DESC: 
-    Compute a weighted average per head over the embeddings using attention. 
-    The centroid of the input embeddings is used as a query to learn an 
-    aggregation over the entity state embeddings. 
+    AdaPool using a centroid query
     
     """
-
-    def __init__(self, dim_hidden, num_heads, dropout_w=0, dropout_e=0, dropout_ff=0, bias=False, flash=True, query_idx=0, **kwargs):
-        super().__init__(dim=-2)
-        self.dim_hidden = dim_hidden
-        self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias, flash)
-        self.query_idx = query_idx
-
-    def forward(self, x:Tensor, mask:BoolTensor=None):  
-        ## AGGREGATE
-        query = x[:, self.query_idx] 
-        residual = self.attn(query, x, mask)
-        return query + residual
-        # return residual
-
     def get_query(self, x, **kwargs):
         return torch.mean(x, dim=1, keepdim=True)
     
 
-class RecurrentQueryPool(Aggregation): 
-    """
-    DESC: 
-    Compute a weighted average per head over the embeddings using attention. 
-    The previous output embedding is used as the aggregation query for the 
-    current set of entity state embeddings, allowing the recurrent hidden 
-    state to govern which entities are attended to. 
-    
-    """    
-    def __init__(self, dim_hidden, num_heads, dropout_w=0, dropout_e=0, bias=False, flash=True, query_idx=0, **kwargs):
-        super().__init__(dim=-2)
-        self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias)
-        self.query_idx = query_idx
-        self.query = None 
-
-    def forward(self, x:Tensor, mask:BoolTensor=None):  
-        ## AGGREGATE
-        query = x[:, self.query_idx] #.unsqueeze(1)
-        residual = self.attn(query, x, mask)
-        ## UPDATE RECURRENT QUERY
-        self.query = query + residual 
-        return self.query
-
-    def set_query(self, recurrent_state:torch.Tensor):
-        self.query = recurrent_state
-    
-    def get_query(self, **kwargs):
-        ## INITIALIZE NEW STATE or RESET IF BATCH SIZES DIFFER
-        assert self.query is not None 
-            # self.query = self.get_initial_query()
-        return self.query
-
-    def get_initial_query(self):
-        ## INITIALIZE EMPTY MEMORY FROM SCRATCH
-        param = next(self.parameters())
-        return torch.zeros(1, self.attn.dim_hidden, device=param.device, dtype=param.dtype)
-
-
-class KmeansPool(Aggregation):
-
-    def __init__(self, dim_hidden, num_heads, dropout_w=0, dropout_e=0, dropout_ff=0, bias=False, flash=True, query_idx=0, **kwargs):
-        super().__init__(dim=-2)
-        self.dim_hidden = dim_hidden
-        self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias, flash)
-        self.query_idx = query_idx
-        self.k
-
-    def forward(self, x:Tensor, mask:BoolTensor=None):  
-        ## AGGREGATE
-        query = x[:, self.query_idx] 
-        residual = self.attn(query, x, mask)
-        return query + residual
-        # return residual
-
-    def get_query(self, x, **kwargs):
-        return self.kmeans(x).reshape(x.shape[0], -1)
-    
-    # def kmeans(self, x):
-    #     for k in self.k:
-    #         centroid = ...
-    
 
 if __name__ == "__main__":
 
     def test_aggr(pool, out_shape, b=32, n=10, d=128):
         x = torch.rand((b, n, d))
         out = pool(x)
-        assert len(out.shape) == 2, "Aggregation error"
+        assert len(out.shape) == 2, "Pool error"
         assert out.shape == out_shape, "Pooling hidden dimension size mismatch"
         return 
     
     def test_mask(pool, x, y, mask):
         out = pool(x, mask)
         assert out.shape == y.shape, "Pooling hidden dimension size mismatch"
-        assert len(out.shape) == 2, "Aggregation error"
-        assert torch.all(y == out), "Aggregation Error"
+        assert len(out.shape) == 2, "Pool error"
+        assert torch.all(y == out), "Pool Error"
         return         
 
     ## PARAMETERS
@@ -270,16 +169,13 @@ if __name__ == "__main__":
     test_aggr(pooling_layer, out_shape=(b, d), b=b, n=n, d=d)
     test_mask(pooling_layer, x, y, mask)
     
-    pooling_layer = LrnPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, k=1)
+    pooling_layer = ClsToken(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, k=1)
     test_aggr(pooling_layer, out_shape=(b, d), b=b, n=n, d=d)
     
-    pooling_layer = LrnPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, k=3)
+    pooling_layer = ClsToken(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, k=3)
     test_aggr(pooling_layer, out_shape=(b, 3*d), b=b, n=n, d=d)
     
-    pooling_layer = RecurrentQueryPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn)
-    test_aggr(pooling_layer, out_shape=(b, d), b=b, n=n, d=d)
-
-    pooling_layer = RelPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, query_idx=0) 
+    pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, query_idx=0) 
     torch.nn.init.eye_(pooling_layer.attn.Q.weight)
     torch.nn.init.eye_(pooling_layer.attn.KV.weight[:d])
     torch.nn.init.eye_(pooling_layer.attn.KV.weight[d:])

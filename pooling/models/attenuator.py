@@ -7,8 +7,8 @@ from pooling.nn.pooling import (
     MaxPool, 
     AvgPool, 
     SumPool, 
-    RelPool, 
-    LrnPool,
+    AdaPool, 
+    ClsToken,
     # AdaPool, 
     CtrPool,
 )
@@ -33,7 +33,7 @@ class Attenuator(nn.Module):
             num_emb=2,            
             pos_emb=False,
             pooling_norm=False,
-            pooling_method="RelPool",
+            pooling_method="AdaPool",
             query_idx=0,
             seed=None,
             **kwargs,
@@ -93,16 +93,11 @@ class Attenuator(nn.Module):
             pooling_layer = AvgPool()
         elif pooling_method == "SumPool":
             pooling_layer = SumPool(dim_hidden, pooling_norm)
-        elif pooling_method == "RelPool":
-            pooling_layer = RelPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=query_idx) 
+        elif pooling_method == "AdaPool":
+            pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=query_idx) 
             self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
-        # elif pooling_method == "AdaPool":
-        #     pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=0) 
-        #     self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
-        #     self._query = True
-        elif pooling_method == "LrnPool":
-            pooling_layer = LrnPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
-            # self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
+        elif pooling_method == "ClsToken":
+            pooling_layer = ClsToken(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
             self._query = True
         elif pooling_method == "CtrPool":
             pooling_layer = CtrPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
@@ -220,7 +215,7 @@ if __name__ == "__main__":
         dropout_ff,
         bias_attn,
         bias_ff,
-        pooling_method="RelPool", 
+        pooling_method="AdaPool", 
         seed=SEED,
     )
 
