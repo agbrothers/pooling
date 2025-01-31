@@ -11,19 +11,15 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data.dataset import Subset
-from torch.utils.data import DataLoader, TensorDataset, random_split
+from torch.utils.data import DataLoader, TensorDataset
 torch.set_float32_matmul_precision('high')
 
 from pooling.models.attenuator import Attenuator
-from pooling.models.autoencoder import Autoencoder
-from pooling.models.aggregation_mlp import AggregationMLP
 from pooling.utils.diagnostics import get_gpu_memory, convert_size
 
 
 MODELS = {
     "Attenuator": Attenuator,
-    "Autoencoder": Autoencoder,
-    "AggregationMLP": AggregationMLP
 }
 
 
@@ -98,11 +94,10 @@ def load_checkpoint(model, path):
     return model
     
 
-
 def load_dataset(experiment_path, cardinality, dim_vectors):
     # Load data
     method = os.path.basename(experiment_path)
-    data_path = os.path.dirname(experiment_path).replace("experiments", "data")
+    data_path = os.path.dirname(os.path.dirname(experiment_path)).replace("experiments", "data")
     X = np.load(os.path.join(data_path, f"X-N{cardinality}-d{dim_vectors}.npy"))   # SHAPE: [batch, num_vectors, dim_vectors]
     y = np.load(os.path.join(data_path, f"y-N{cardinality}-d{dim_vectors}-{method}.npy"))  # SHAPE: [batch, aggregate_vector]
 
@@ -144,7 +139,6 @@ def kfold(
     model_config.update({
         "num_vectors": data_shape[1],
         "dim_ff": 4*model_config["dim_hidden"],
-        # "dim_hidden": data_shape[2],
     })
     model_class = MODELS[model_config["model"]]
 
@@ -236,31 +230,24 @@ def train(
         ## VALIDATION
         model.eval()
         val_loss = 0.0
-        val_dist = 0.0
         with torch.no_grad():
             for batch_X, batch_y in val_loader:
                 batch_X, batch_y = batch_X.to(device), batch_y.to(device)
                 predictions = model(batch_X)
                 loss = criterion(predictions, batch_y)
-                # dist = torch.mean(torch.linalg.norm(predictions-batch_y, axis=1))
                 val_loss += loss.item()
-                # val_dist += dist.item()
 
         wall_time = time.time() - start
-        # epoch_val_dist = val_dist / len(val_loader)
         epoch_val_loss = val_loss / len(val_loader)
         epoch_train_loss = train_loss / len(train_loader)
-        # print(f"Exp {seed}. Epoch {epoch + 1}/{epochs} | Train Loss: {epoch_train_loss:.4f} | Val Loss: {epoch_val_loss:.4f} | Val Dist {epoch_val_dist:.4f}")
         print(f"Exp {seed}. Epoch {epoch + 1}/{epochs} | Train Loss: {epoch_train_loss:.4f} | Val Loss: {epoch_val_loss:.4f}")
         log(history_path, epoch_train_loss, epoch_val_loss, wall_time)
         
         ## SAVE CHECKPOINT
-        # if epoch > int(0.05*epochs) and epoch_val_loss < best_loss:
         if epoch_val_loss < best_loss:
             best_loss = epoch_val_loss
             save_checkpoint(log_dir, model, epoch_val_loss)
 
-    
     ## LOAD CHECKPOINT WITH BEST VALIDATION LOSS
     model = load_checkpoint(model, log_dir)
 
@@ -315,8 +302,7 @@ if __name__ == "__main__":
 
     # PARSE ARGUMENTS
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-p', '--experiment_path', default="experiments/bounds", help='Relative path to the experiment config.')
-    # parser.add_argument('-p', '--experiment_path', default="experiments/bounds/knn1", help='Relative path to the experiment config.')
+    parser.add_argument('-p', '--experiment_path', default="./experiments/noise-robustness", help='Relative path to the experiment config.')
     args = parser.parse_args()
 
     ## BUILD PATHS FROM ARGPARSE INPUT
