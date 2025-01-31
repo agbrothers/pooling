@@ -5,7 +5,6 @@ import argparse
 from copy import deepcopy
 from pyvirtualdisplay import Display
 
-from pooling import POLICY_REGISTER, __path__
 from pooling.utils.RL import build_ppo_config, save_checkpoint, load_config, save_config, set_seed
 
 
@@ -56,24 +55,15 @@ def train(algo, config) -> None:
                 best_dual_rew[policy_id]["mean_rew"] = mean_rew[policy_id]
                 best_dual_rew[policy_id]["min_rew"] = min_rew[policy_id]
                 save_checkpoint(algo, policy_id, "dual", mean_rew[policy_id], config["CHECKPOINT_PATH"])
-            
     return
 
 
 
 if __name__ == "__main__":
 
-    ## TODO: 
-    ##  * ADD ARGPARSE
-
-    ## USE VIRTUAL DISPLAY FOR RENDERING ON A HEADLESS SERVER
-    disp = Display()
-    disp.start()
-    # ray.init()
-
     ## PARSE ARGUMENTS
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-p', '--experiment_path', default="experiments/simple-tag-baseline", help='Path to the experiment directory.')
+    parser.add_argument('-p', '--experiment_path', default="./experiments/simple-centroid-1v3v0", help='Path to the experiment directory.')
     args = parser.parse_args()
     
     ## LOAD AND BUILD CONFIG
@@ -82,6 +72,10 @@ if __name__ == "__main__":
     config = load_config(config_path)
     base_config = deepcopy(config)
     num_experiments = config["LEARNING_PARAMETERS"]["NUM_EXPERIMENTS"]
+    
+    ## USE VIRTUAL DISPLAY FOR RENDERING ON A HEADLESS SERVER
+    disp = Display()
+    disp.start()
 
     ## RUN EXPERIMENTS
     for i in range(num_experiments):
@@ -104,29 +98,15 @@ if __name__ == "__main__":
         ppo_config["seed"] = seed
         ppo_config["model"]["custom_model_config"]["seed"] = seed
         ppo_config = ppo_config.debugging(seed=seed)
-        # .framework(
-        #     "torch",
-        #     torch_compile_learner=True,
-        #     torch_compile_worker=True,
-        #     torch_compile_worker_dynamo_backend="ipex",
-        #     torch_compile_worker_dynamo_mode="default",
-        # )
         set_seed(seed)
         save_config(save_path, base_config)
         print(f"\nSTARTING EXPERIMENT {method} {experiment_name}: {i+1}/{num_experiments}\n")
-
 
         ## TRAIN
         algo = ppo_config.build()
         train(algo, config)
         algo.stop()
         print("\nTRAINING COMPLETED\n")
-
-        # ## EVAL
-        # if config["LEARNING_PARAMETERS"]["EVAL"]: 
-        #     experiment_path = config["PPO_CONFIG"]["logger_config"]["logdir"]
-        #     eval_interference(config, experiment_path)
-        #     print("\nEVALUATION COMPLETED\n")
 
     disp.stop()
     

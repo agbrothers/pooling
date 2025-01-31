@@ -6,21 +6,11 @@ import pandas as pd
 import numpy as np
 
 
-def integrate(x):
-    ## USE THE TRAPEZOID RULE FOR INTEGRATION 
-    ## NORMALIZED BY THE SEQUENCE LENGTH
-    ## https://en.wikipedia.org/wiki/Trapezoidal_rule 
-    n = len(x)
-    weights = np.ones(n)
-    weights[[0,-1]] = 0.5
-    return weights.dot(x) / n
-
-
 if __name__ == "__main__":
 
     ## PARSE ARGUMENTS
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-p', '--experiment_path', default="./experiments/simple-tag-bottleneck", help='Path to the dataset.')
+    parser.add_argument('-p', '--experiment_path', default="./experiments/simple-centroid-1v3v0", help='Path to the dataset.')
     args = parser.parse_args()
     
     ## LOAD CONFIG

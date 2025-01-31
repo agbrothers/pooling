@@ -99,12 +99,12 @@ def load_checkpoint(model, path):
     
 
 
-def load_dataset(experiment_path, dim_vectors):
+def load_dataset(experiment_path, cardinality, dim_vectors):
     # Load data
     method = os.path.basename(experiment_path)
     data_path = os.path.dirname(experiment_path).replace("experiments", "data")
-    X = np.load(os.path.join(data_path, f"X{dim_vectors}.npy"))   # SHAPE: [batch, num_vectors, dim_vectors]
-    y = np.load(os.path.join(data_path, f"y{dim_vectors}_{method}.npy"))  # SHAPE: [batch, aggregate_vector]
+    X = np.load(os.path.join(data_path, f"X-N{cardinality}-d{dim_vectors}.npy"))   # SHAPE: [batch, num_vectors, dim_vectors]
+    y = np.load(os.path.join(data_path, f"y-N{cardinality}-d{dim_vectors}-{method}.npy"))  # SHAPE: [batch, aggregate_vector]
 
     # Convert to torch tensors
     X = torch.tensor(X, dtype=torch.float32)
@@ -112,19 +112,6 @@ def load_dataset(experiment_path, dim_vectors):
 
     # Create a full dataset
     return TensorDataset(X, y)
-
-    # # Split into train, validation, and test datasets
-    # train_ratio, val_ratio, test_ratio = 0.7, 0.15, 0.15
-    # total_size = len(full_dataset)
-    # train_size = int(train_ratio * total_size)
-    # val_size = int(val_ratio * total_size)
-    # test_size = total_size - train_size - val_size  # Ensure total size matches
-
-    # train_dataset, val_dataset, test_dataset = random_split(
-    #     full_dataset, [train_size, val_size, test_size], 
-    #     generator=torch.Generator().manual_seed(seed)  # Ensures deterministic split
-    # )
-    # return train_dataset, val_dataset, test_dataset
 
 
 def kfold(
@@ -134,7 +121,8 @@ def kfold(
     ):
     ## PARSE CONFIG
     model_config = config["MODEL_CONFIG"]
-    dim_vectors = config["LEARNING_PARAMETERS"]["DIM_INPUT"]
+    cardinality = config["LEARNING_PARAMETERS"]["INPUT_CARDINALITY"]
+    dim_vectors = config["LEARNING_PARAMETERS"]["INPUT_DIM"]
     test_ratio = config["LEARNING_PARAMETERS"]["TEST_RATIO"]
     bs = config["LEARNING_PARAMETERS"]["BATCH_SIZE"]
     k = config["LEARNING_PARAMETERS"]["NUM_FOLDS"]
@@ -142,7 +130,7 @@ def kfold(
     results = []
 
     ## BUILD DATASETS
-    dataset = load_dataset(experiment_path, dim_vectors)
+    dataset = load_dataset(experiment_path, cardinality, dim_vectors)
 
     ## KFOLD VARIABLES
     data_shape = dataset.tensors[0].shape
@@ -169,7 +157,7 @@ def kfold(
         seed = config["LEARNING_PARAMETERS"]["SEED"]
 
         ## INITIALIZE NEW MODEL
-        model = model_class(**model_config)
+        model = model_class(**model_config, seed=seed)
         
         ## SET DEVICE 
         initial_gpu_mem = get_gpu_memory()
@@ -294,54 +282,62 @@ def train(
     return test_loss
 
 
+# def compute_baseline_scores(test_loader, device, criterion):
+#     ## NAIVE CENTROID GUESS
+#     test_loss = 0.0
+#     with torch.no_grad():
+#         for batch_X, batch_y in test_loader:
+#             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+#             predictions = batch_X.mean(axis=1)
+#             loss = criterion(predictions, batch_y)
+#             test_loss += loss.item()
+#
+#     ## SAVE THE FINAL MODEL
+#     test_loss = test_loss / len(test_loader)
+#     print(test_loss)
+#
+#     ## NAIVE VECTOR OF INTEREST GUESS
+#     test_loss = 0.0
+#     with torch.no_grad():
+#         for batch_X, batch_y in test_loader:
+#             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+#             predictions = batch_X[:,0]
+#             loss = criterion(predictions, batch_y)
+#             test_loss += loss.item()
+#
+#     ## SAVE THE FINAL MODEL
+#     test_loss = test_loss / len(test_loader)
+#     print(test_loss)
+#     return
+
 
 if __name__ == "__main__":
 
     # PARSE ARGUMENTS
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-p', '--experiment_path', default="./experiments/knn1", help='Relative path to the experiment config.')
-    parser.add_argument('-l', '--loop', default=True, help='Loop through path list.')
+    parser.add_argument('-p', '--experiment_path', default="experiments/bounds", help='Relative path to the experiment config.')
+    # parser.add_argument('-p', '--experiment_path', default="experiments/bounds/knn1", help='Relative path to the experiment config.')
     args = parser.parse_args()
 
-
-    paths = [
-        "./experiments/min",
-        "./experiments/max",
-        "./experiments/mean",
-        "./experiments/knn1",
-        "./experiments/knn2",
-        "./experiments/knn4",
-        "./experiments/knn8",
-        "./experiments/knn16",
-        # "./experiments/subset",
-        # "./experiments/combo",
-    ]
-    base = __file__.split("train")[0]
+    ## BUILD PATHS FROM ARGPARSE INPUT
     configs = []
+    base = __file__.split("train")[0]
+    abs_path = os.path.join(base, args.experiment_path)
+    
+    ## CHECK IF THIS PATH LEADS TO A SINGLE EXPERIMENT OR A SET
+    is_single_exp = os.path.exists(os.path.join(abs_path, "config.yml"))
+    paths = [abs_path] if is_single_exp else glob.glob(os.path.join(abs_path, "*"))
+
+    ## LOAD EXPERIMENT CONFIG(S)
     for path in paths:
         with open(os.path.join(base, path, "config.yml"), "r") as file:
             configs.append(yaml.safe_load(file))
 
+    ## K-FOLD CROSS VALIDATION
     for path,config in list(zip(paths, configs)):
-        ## TRAIN
         method = config["MODEL_CONFIG"].get("pooling_method", "mlp") #.upper()
         target = os.path.basename(path).upper()
         path = os.path.join(base, path)
         for i in range(config["LEARNING_PARAMETERS"]["NUM_EXPERIMENTS"]):
             print(f"\nSTARTING EXPERIMENT FOR {method} POOLING APPROXIMATION OF {target}:  {i+1}/{config['LEARNING_PARAMETERS']['NUM_EXPERIMENTS']}")
             kfold(path, config, load_dataset)
-
-
-    # ## LOAD CONFIG
-    # base = __file__.split("train")[0]
-    # path = os.path.join(base, args.experiment_path)
-    # with open(os.path.join(path, "config.yml"), "r") as file:
-    #     config = yaml.safe_load(file)
-
-    # ## TRAIN
-    # method = config["MODEL_CONFIG"].get("pooling_method", "mlp") #.upper()
-    # target = os.path.basename(args.experiment_path).upper()
-    # for i in range(config["LEARNING_PARAMETERS"]["NUM_EXPERIMENTS"]):
-    #     print(f"\nSTARTING EXPERIMENT FOR {method} APPROXIMATION OF {target}:  {i+1}/{config['LEARNING_PARAMETERS']['NUM_EXPERIMENTS']}")
-    #     kfold(path, config, load_dataset)
-    #     # train(path, config, load_dataset)
