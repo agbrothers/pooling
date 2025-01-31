@@ -8,34 +8,6 @@ def softmax(x, axis=None):
     exp = np.exp(x)
     return exp / exp.sum(axis=axis, keepdims=True)
 
-
-def norm_weighted_avg(x, axis=None):
-    """
-    Take the weighted avg of each vector in a sample, where 
-    the weights are determined by the softmax norm of each vector. 
-    
-    """
-    weights = softmax(np.linalg.norm(x, axis=-1, keepdims=True), axis=axis)
-    return np.sum(weights*x, axis=axis)
-
-
-def subset(x, axis=None):
-    """
-    Take the weighted avg of each vector in a sample, where 
-    the weights are determined by the norm/magn of each vector. 
-
-    Mask any vectors with norms below the 75th percentile in that 
-    sample. This is akin to ignoring/attenuating all entities that
-    are a threshold distance away from oneself. 
-    
-    """
-    ## MASK ALL BUT VECTORS WITH THE TOP 75th PERCENTILE NORMS
-    weights = np.linalg.norm(x, axis=-1, keepdims=True)
-    threshold = np.percentile(weights, q=75, axis=1, keepdims=True)
-    mask = weights >= threshold
-    return np.mean(x, axis=axis, where=mask)
-
-
 def knn(k):
     """
     Return the nearest neighbors to the vector at index 0. 
@@ -62,16 +34,6 @@ def kfn(k):
         return np.mean(furthest_k, axis=axis)    
 
     return furthest_neighbors
-
-
-def combo(x, axis=None):
-    i = x.shape[-1]//4
-    return np.hstack((
-        np.mean(x[...,   :i*1], axis=axis),
-        np.max(x[...,   i:i*2], axis=axis),
-        np.min(x[..., 2*i:i*3], axis=axis),
-        subset(x[..., 3*i:i*4], axis=axis),
-    ))
     
 
 def generate_X(
@@ -80,12 +42,10 @@ def generate_X(
         dim_vectors:int, 
     ):
 
-    norm = np.sqrt(dim_vectors)
     num_distributions = 3
+    norm = np.sqrt(dim_vectors)
     dataset_shape = (num_samples, num_vectors, dim_vectors)
-    # sample_shape = (dim_vectors//num_distributions+1, num_vectors)
     sample_shape = (num_vectors, dim_vectors//num_distributions+1)
-    
     samples = []
     ## CONSTRUCT SAMPLES WITH FEATURES DRAWN FROM A MIX OF DISTRIBUTIONS
     for _ in trange(num_samples):
@@ -125,9 +85,6 @@ def generate_X(
         ## SHUFFLE ORDER OF FEATURE DISTRIBUTIONS
         np.random.shuffle(sample)
 
-        ## NORMALIZE SAMPLE BY DIMENSIONALITY
-        
-
         ## TRANSPOSE TO GET [num_vectors, dim_vectors]
         samples.append(sample[:dim_vectors].T)
 
@@ -153,15 +110,6 @@ def generate_y(
         "knn32": knn(32),
         "knn64": knn(64),
         "knn128": knn(128),
-        "kfn1": kfn(1),
-        "kfn2": kfn(2),
-        "kfn3": kfn(3),
-        "kfn4": kfn(4),
-        "kfn8": kfn(8),
-        "kfn16": kfn(16),
-        "combo": combo,
-        "subset": subset,
-        "std": np.std,
     }
     return METHODS[aggr_method](X, axis=1)
 
@@ -170,7 +118,7 @@ def generate_y(
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-m', '--method', default="knn1", type=str, help='Aggregation method for the dataset.')
+    parser.add_argument('-m', '--method', default="knn96", type=str, help='Aggregation method for the dataset.')
     parser.add_argument('-n', '--num_samples', default=1_000_000, type=int, help='Number of samples in the dataset.')
     parser.add_argument('-k', '--num_vectors', default=64, type=int, help='Number of vectors to aggregate per sample.')
     parser.add_argument('-d', '--dim_vectors', default=16, type=int, help='Dimensionality of the vectors per sample.')
@@ -178,8 +126,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     np.random.seed(args.seed)
 
-    X_path = os.path.join(os.path.dirname(__file__), f"X{args.dim_vectors}.npy")
-    y_path = os.path.join(os.path.dirname(__file__), f"y{args.dim_vectors}_{args.method}.npy")
+    X_path = os.path.join(os.path.dirname(__file__), f"X-N{args.num_vectors}-d{args.dim_vectors}.npy")
+    y_path = os.path.join(os.path.dirname(__file__), f"y-N{args.num_vectors}-d{args.dim_vectors}-{args.method}.npy")
+    # X_path = os.path.join(os.path.dirname(__file__), f"X{args.dim_vectors}.npy")
+    # y_path = os.path.join(os.path.dirname(__file__), f"y{args.dim_vectors}_{args.method}.npy")
 
     ## USE SAME X TRAINING DATA FOR EACH AGGREGATION METHOD TO SAVE SPACE
     if os.path.exists(X_path):
