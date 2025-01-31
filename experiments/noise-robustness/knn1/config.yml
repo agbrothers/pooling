@@ -1,0 +1,30 @@
+EXPERIMENT_NAME: KNN-1
+
+LEARNING_PARAMETERS: 
+  NUM_EXPERIMENTS: 1
+  LEARNING_RATE: 5.0e-4 
+  BATCH_SIZE: 750 
+  EPOCHS: 100
+  NUM_FOLDS: 5
+  TEST_RATIO: 0.1
+  INPUT_CARDINALITY: 128
+  INPUT_DIM: 16
+  DEBUG: False
+
+MODEL_CONFIG:
+  model: Attenuator
+  num_layers: 12 
+  num_heads: 8 
+  dim_hidden: 16 
+  dropout_w: 0.0 
+  dropout_e: 0.0 
+  dropout_ff: 0.1 
+  bias_attn: False 
+  bias_ff: True 
+  pos_emb: True
+  num_emb: 2
+  flash: True 
+  pooling_method: AvgPool 
+  # pooling_method: MaxPool
+  # pooling_method: AdaPool 
+  # pooling_method: ClsToken 
