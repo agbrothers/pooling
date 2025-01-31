@@ -70,18 +70,14 @@ class raw_env(SimpleEnv, EzPickle):
         )
         self.metadata["name"] = "mpe_centroid"
 
-    # def _execute_world_step(self):
-    #     ## SET RANDOM ACTIONS FOR SIGNAL ENTITIES
-    #     for agent in self.world.signal:
-    #         d0 = 0.1
-    #         agent.theta += d0 * np.random.rand() * 2 * np.pi
-    #         agent.action.u = np.array((np.sin(agent.theta), np.cos(agent.theta))) * agent.accel
-    #     return super()._execute_world_step()
-
 
 env = make_env(raw_env)
 parallel_env = parallel_wrapper_fn(env)
 
+
+AGENT_COLOR  = np.array((126, 221, 134)) / 255
+SIGNAL_COLOR = np.array((109, 177, 255)) / 255
+NOISE_COLOR  = np.array((254, 112, 112)) / 255
 
 def random_heuristic(agent, world):
     action = Action()
@@ -89,29 +85,6 @@ def random_heuristic(agent, world):
     action.u = np.array((np.sin(theta), np.cos(theta))) * agent.accel    
     return action
 
-
-# class SignalWorld(World):
-#     @property
-#     def entities(self):
-#         return self.agents + self.signal + self.landmarks
-
-#     # update state of the world
-#     def step(self):
-#         # set actions for scripted agents
-#         for agent in self.scripted_agents:
-#             agent.action = agent.action_callback(agent, self)
-#         # gather forces applied to entities
-#         p_force = [None] * len(self.entities)
-#         # apply agent physical controls
-#         p_force = self.apply_action_force(p_force)
-#         # apply environment forces
-#         p_force = self.apply_environment_force(p_force)
-#         # integrate physical state
-#         self.integrate_state(p_force)
-#         # update agent state
-#         for agent in self.agents + self.signal:
-#             self.update_agent_state(agent)
-#         return
 
 class Scenario(BaseScenario):
     def make_world(
@@ -125,8 +98,8 @@ class Scenario(BaseScenario):
             rew_coeff_centroid=0.2,
             rew_positive=False,
             collidable_agents=False,
-            collidable_signal=True,
-            collidable_noise=True,
+            collidable_signal=False,
+            collidable_noise=False,
             norm_constant=1.0,
             **kwargs
         ):
@@ -172,11 +145,7 @@ class Scenario(BaseScenario):
             entity.max_speed = 5.0 if entity.adversary else 2.0
             entity.silent = True
             entity.theta = 0
-            entity.color = (
-                np.array([0.35, 0.85, 0.35])
-                if not entity.adversary
-                else np.array([0.85, 0.35, 0.35])
-            )
+            entity.color = AGENT_COLOR if entity.adversary else SIGNAL_COLOR
         ## ADD LANDMARKS
         world.landmarks = [Landmark() for _ in range(num_noise)]
         for i, noise in enumerate(world.landmarks):
@@ -185,7 +154,7 @@ class Scenario(BaseScenario):
             noise.size = 0.05
             noise.movable = False
             noise.boundary = False
-            noise.color = np.array([0.25, 0.25, 0.25])
+            noise.color = NOISE_COLOR
         return world
 
 
@@ -221,7 +190,6 @@ class Scenario(BaseScenario):
         if self.rew_positive:
             rew = min(1.0, self.rew_coeff_centroid / (signal_centroid_dist**0.5))
         else:
-            # rew = -self.rew_coeff_centroid * (signal_centroid_dist**2)
             rew = -self.rew_coeff_centroid * (signal_centroid_dist**0.5)
             # rew = -signal_centroid_dist * self.rew_coeff_centroid
         return rew
