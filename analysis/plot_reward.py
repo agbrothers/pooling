@@ -28,20 +28,17 @@ def plot_se(
 
     LINE_ALPHA = 0.6
     IQR_ALPHA = 0.12
-    EDGECOLOR_ALPHA = 0.35
-    FACECOLOR_ALPHA = 0.08
-
     METHODS = {
-        "RelPool": "AdaPool",
-        "LrnPool": "ClsToken",
+        "AdaPool": "AdaPool",
+        "ClsToken": "ClsToken",
         "AvgPool": "AvgPool",
         "MaxPool": "MaxPool",
     }
     COLORS = {
         "AvgPool": [102/255, 158/255, 255/255], #669eff  -  blue
         "MaxPool": [255/255,  62/255,  62/255], #ff3e3e  -  red
-        "RelPool": [ 10/255, 209/255,   0/255], #0bd100  -  green
-        "LrnPool": [255/255, 162/255,   0/255], #ffa200  -  orange
+        "AdaPool": [ 10/255, 209/255,   0/255], #0bd100  -  green
+        "ClsToken": [255/255, 162/255,   0/255], #ffa200  -  orange
     }
 
     ## PLOT PARAMETERS
@@ -56,11 +53,8 @@ def plot_se(
     ## PLOT MEDIAN + IQR
     means = data.groupby("Method").mean()
     se = data.groupby("Method").apply(standard_error)
-    # upper_quartiles = data.groupby("Method").quantile(0.75)
     x = np.arange(means.shape[1], step=k) * batch_size  # x-axis values based on the timestep axis
-    
     moving_avg_window = 5
-    # se = se.rolling(window=moving_avg_window, min_periods=1, axis=1).mean()
 
     ## PLOT IQR
     error = {}
@@ -72,23 +66,20 @@ def plot_se(
         upper_se = upper_se.rolling(window=moving_avg_window, min_periods=1).mean()
         lower_se = lower_se.rolling(window=moving_avg_window, min_periods=1).mean()
 
-
         ## GET Y-AXIS BOUNDS
         if upper_se.max() > max_rew:
             max_rew = upper_se.max()
         if lower_se.min() < min_rew:
             min_rew = lower_se.min()
-        ax.set_ylim((min_rew*0.8,max_rew*1.05))
 
         ## SHADE THE IQR
-        # plt.fill_between(x, lower_se, upper_se, alpha=IQR_ALPHA, color=tuple(COLORS[method])) 
         color = COLORS[method]
         plt.fill_between(
             x, 
             lower_se, 
             upper_se, 
             edgecolor=color + [0.0],
-            facecolor=color + [IQR_ALPHA], #[IQR_ALPHA],
+            facecolor=color + [IQR_ALPHA], 
         )         
         rng = upper_se.iloc[-1] - lower_se.iloc[-1]
         error[rng] = (method, x[-1], lower_se.iloc[-1], upper_se.iloc[-1])
@@ -99,166 +90,18 @@ def plot_se(
         mean = means.loc[method][::k]
         lines[method] = plt.plot(x, mean, alpha=LINE_ALPHA, c=tuple(COLORS[method]), label=label)
 
-    # ## EXTEND IQR INTO THE MARGIN FOR READABILITY
-    # for i,(rng,pts) in enumerate(sorted(iqr.items(), reverse=True)): 
-    #     method = pts[0]
-    #     color = COLORS[method]
-    #     plt.fill_between(
-    #         (pts[1], pts[1]+10*batch_size*(i+1)), 
-    #         (pts[2],pts[2]),
-    #         (pts[3],pts[3]),
-    #         edgecolor=color + [EDGECOLOR_ALPHA],
-    #         facecolor=color + [FACECOLOR_ALPHA],
-    #         # label=METHODS[method],
-    #     ) 
-    # ax.axvline(x=x[-1], color='k', linestyle='-', linewidth=0.8)
-
     # ## SET TRAIN LINE
     font = font_manager.FontProperties(
-        # family='Helvetica',
         weight='medium',
         style='normal', 
         size=10,
     )
-
-    # ax.set_xticks(x)
-    # ax.set_xticklabels(x_labels, rotation=x_rotation, ha="left", fontdict={"fontsize":label_size})
-    # ax.set_title(f"Simple Tag: {os.path.basename(experiment_path)}", fontsize=title_size, weight=w)
+    ax.set_ylim((min_rew*0.8,max_rew*1.05))
     ax.set_xlabel(f'Training Steps', fontsize=label_size, weight=w)
     ax.set_ylabel('Mean Episode Reward', fontsize=label_size, weight=w)    
-
-    # ax.legend(frameon=False, ncols=len(lines), loc="upper center", prop=font) ## bbox_to_anchor=(1, 1)
-    # ax.legend(frameon=True, loc="upper left", prop=font) ## 
-    ax.legend(frameon=True, loc="lower right", prop=font) ## 
-    # ax.legend(frameon=False, bbox_to_anchor=(1, 1), loc="lower left") ## 
-    ## 'best', 'upper right', 'upper left', 'lower left', 'lower right', 'right', 'center left', 'center right', 'lower center', 'upper center', 'center'
+    ax.legend(frameon=True, loc="upper left", prop=font) 
     plt.tight_layout()
     plt.savefig(os.path.join(experiment_path,"reward_se.png"))
-    plt.cla()
-    return
-
-
-def plot_iqr(
-        data:dict, 
-        experiment_path:str,
-        batch_size:int,
-    ):
-    """
-    Plot the median and interquartile range of a dataset.
-    
-    Parameters:
-    - data (np.ndarray): 2D array where axis 0 corresponds to samples and axis 1 to timesteps.
-    - color (str): Color of the median line and IQR shading.
-    - label (str): Label for the median line.
-    """
-
-    LINE_ALPHA = 0.6
-    IQR_ALPHA = 0.08 #0.12
-    EDGECOLOR_ALPHA = 0.35
-    FACECOLOR_ALPHA = 0.08
-
-    METHODS = {
-        "RelPool": "AdaPool",
-        "LrnPool": "ClsToken",
-        "AvgPool": "AvgPool",
-        "MaxPool": "MaxPool",
-    }
-    COLORS = {
-        "AvgPool": [102/255, 158/255, 255/255], #669eff  -  blue
-        "MaxPool": [255/255,  62/255,  62/255], #ff3e3e  -  red
-        "RelPool": [ 10/255, 209/255,   0/255], #0bd100  -  green
-        "LrnPool": [255/255, 162/255,   0/255], #ffa200  -  orange
-    }
-
-    ## PLOT PARAMETERS
-    w = "heavy"
-    k = 1
-    label_size = 8 
-    max_rew = -1e+6
-    min_rew =  1e+6
-
-    fig, ax = plt.subplots(figsize=(5,4), dpi=500, nrows=1, ncols=1)
-    
-    ## PLOT MEDIAN + IQR
-    medians = data.groupby("Method").median()
-    lower_quartiles = data.groupby("Method").quantile(0.25)
-    upper_quartiles = data.groupby("Method").quantile(0.75)
-    x = np.arange(medians.shape[1], step=k) * batch_size  # x-axis values based on the timestep axis
-    
-    moving_avg_window = 10
-    lower_quartiles = lower_quartiles.rolling(window=moving_avg_window, min_periods=1, axis=1).mean()
-    upper_quartiles = upper_quartiles.rolling(window=moving_avg_window, min_periods=1, axis=1).mean()
-
-    ## PLOT IQR
-    iqr = {}
-    for method, label in METHODS.items():
-        median = medians.loc[method]
-        upper_quartile = upper_quartiles.loc[method][::k]
-        lower_quartile = lower_quartiles.loc[method][::k]
-
-        ## GET Y-AXIS BOUNDS
-        if upper_quartile.max() > max_rew:
-            max_rew = upper_quartile.max()
-        if lower_quartile.min() < min_rew:
-            min_rew = lower_quartile.min()
-
-        ## SHADE THE IQR
-        # plt.fill_between(x, lower_quartile, upper_quartile, alpha=IQR_ALPHA, color=tuple(COLORS[method])) 
-        color = COLORS[method]
-        plt.fill_between(
-            x, 
-            lower_quartile, 
-            upper_quartile, 
-            edgecolor=color + [0.0],
-            facecolor=color + [IQR_ALPHA], #[IQR_ALPHA],
-        )         
-        rng = upper_quartile.iloc[-1] - lower_quartile.iloc[-1]
-        iqr[rng] = (method, x[-1], lower_quartile.iloc[-1], upper_quartile.iloc[-1])
-    
-    ax.set_ylim((min_rew*0.8,max_rew*1.05))
-    # ax.set_ylim((min_rew*0.8,255*1.05))
-
-    ## PLOT MEDIAN LINES ON TOP OF IQR
-    lines = {}
-    for method, label in METHODS.items():
-        median = medians.loc[method][::k]
-        lines[method] = plt.plot(x, median, alpha=LINE_ALPHA, c=tuple(COLORS[method]), label=label)
-
-    ## EXTEND IQR INTO THE MARGIN FOR READABILITY
-    for i,(rng,pts) in enumerate(sorted(iqr.items(), reverse=True)): 
-        method = pts[0]
-        color = COLORS[method]
-        plt.fill_between(
-            (pts[1], pts[1]+10*batch_size*(i+1)), 
-            (pts[2],pts[2]),
-            (pts[3],pts[3]),
-            edgecolor=color + [EDGECOLOR_ALPHA],
-            facecolor=color + [FACECOLOR_ALPHA],
-            # label=METHODS[method],
-        ) 
-
-    # ## SET TRAIN LINE
-    font = font_manager.FontProperties(
-        # family='Helvetica',
-        weight='medium',
-        style='normal', 
-        size=10,
-    )
-    ax.axvline(x=x[-1], color='k', linestyle='-', linewidth=0.8)
-
-    # ax.set_xticks(x)
-    # ax.set_xticklabels(x_labels, rotation=x_rotation, ha="left", fontdict={"fontsize":label_size})
-    # ax.set_title(f"Simple Tag: {os.path.basename(experiment_path)}", fontsize=title_size, weight=w)
-    ax.set_xlabel(f'Training Steps', fontsize=label_size, weight=w)
-    ax.set_ylabel('Mean Episode Reward', fontsize=label_size, weight=w)    
-
-    # ax.legend(frameon=False, ncols=len(lines), loc="upper center", prop=font) ## bbox_to_anchor=(1, 1)
-    # ax.legend(frameon=True, loc="upper left", prop=font) ## 
-    ax.legend(frameon=True, loc="lower right", prop=font) ## 
-    # ax.legend(frameon=False, bbox_to_anchor=(1, 1), loc="lower left") ## 
-    ## 'best', 'upper right', 'upper left', 'lower left', 'lower right', 'right', 'center left', 'center right', 'lower center', 'upper center', 'center'
-    plt.tight_layout()
-    plt.savefig(os.path.join(experiment_path,"reward_iqr_rolling.png"))
     plt.cla()
     return
 
@@ -268,13 +111,7 @@ if __name__ == "__main__":
 
     ## PARSE ARGUMENTS
     parser = argparse.ArgumentParser(description=None)
-    # parser.add_argument('-p', '--experiment_path', default="./experiments/FINAL-RL/simple-tag-nbhd-1v3v4", help='Path to the dataset.')
-    # parser.add_argument('-p', '--experiment_path', default="./experiments/FINAL-RL/simple-tag-nbhd-2v6v8", help='Path to the dataset.')
-    # parser.add_argument('-p', '--experiment_path', default="./experiments/FINAL-RL/simple-tag-nbhd-4v12v16", help='Path to the dataset.')
-    # parser.add_argument('-p', '--experiment_path', default="./experiments/FINAL-RL/simple-tag-noise-1v3v4", help='Path to the dataset.')
-    # parser.add_argument('-p', '--experiment_path', default="./experiments/FINAL-RL/simple-tag-width2x-1v3v4-d6", help='Path to the dataset.')
-    parser.add_argument('-p', '--experiment_path', default="./experiments/FINAL-RL/simple-tag-width2x-2v6v8-d6", help='Path to the dataset.')
-    # parser.add_argument('-p', '--experiment_path', default="./experiments/FINAL-RL/boxworld-7x7-2D", help='Path to the dataset.')
+    parser.add_argument('-p', '--experiment_path', default="./experiments/simple-centroid-1v3v0", help='Path to the dataset.')
     args = parser.parse_args()
 
     ## LOAD CONFIG
@@ -287,5 +124,4 @@ if __name__ == "__main__":
         num_agents = len([a for a,p in config["AGENT_TO_POLICY"].items() if p in config["POLICIES_TO_TRAIN"]])
         batch_size = config["LEARNING_PARAMETERS"]["BATCH_SIZE"] * num_agents
         
-    plot_iqr(data, experiment_path, batch_size)
     plot_se(data, experiment_path, batch_size)
