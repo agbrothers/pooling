@@ -33,25 +33,19 @@ class MultiHeadAttention(nn.Module):
 
         ## COMPUTE ATTENTION
         if self.flash:
-            attn_mask = torch.tile(mask, (q.size(-2), 1)) if mask is not None else None 
-            e = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_w.p if self.training else 0, is_causal=False)
+            e = F.scaled_dot_product_attention(
+                q, k, v, 
+                attn_mask=mask, 
+                dropout_p=self.dropout_w.p if self.training else 0, 
+                is_causal=False,
+                scale=self.scale,
+            )
             e = e.transpose(1, 2).contiguous().view_as(query) 
         else:
             dot_product = torch.einsum("bhqa,bhka->bhqk", (q, k))
-            dot_product = self.apply_mask(dot_product * self.scale, mask)
+            dot_product = self.scale * dot_product.masked_fill_(mask.logical_not(), float("-inf"))
             w = torch.softmax(dot_product, dim=-1)
             w = self.dropout_w(w)
-            e = torch.einsum("bhqv,bhva->bhqa", (w, v)).contiguous().view_as(query) 
-        
-        return self.dropout_e(self.out(e))
+            e = torch.einsum("bhqv,bhva->bhqa", (w, v)).transpose(1, 2).contiguous().view_as(query) 
 
-    def apply_mask(self, x, mask):
-        ## TRUE VALUES GET MASKED
-        if mask is None:
-            return x
-        if len(mask.shape) == 1: 
-            mask = mask.unsqueeze(0)
-        # if len(mask.shape) == 2: 
-        #     mask = mask.unsqueeze(2)
-        return x + mask #.masked_fill(mask, float('-inf'))
-    
+        return self.dropout_e(self.out(e))

@@ -304,8 +304,9 @@ class TokenActorCritic(nn.Module):
         ## RETURN INPUT MASK
         if self._idx_mask is None or mask is not None:
             return None
-        ## RETREIVE MASK FROM TOKENS
-        return tokens[..., self._idx_mask]
+        mask = tokens[..., self._idx_mask].to(bool).logical_not()
+        mask = mask.unsqueeze(1).expand((-1, mask.size(-1), -1))
+        return mask.unsqueeze(1)
 
     def get_value(self):
         return self.value
