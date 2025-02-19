@@ -153,7 +153,7 @@ if __name__ == "__main__":
 
     ## PARSE ARGUMENTS
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-p', '--experiment_path', default="./experiments/final/k_4x", help='Path to the dataset.')
+    parser.add_argument('-p', '--experiment_path', default="./experiments/noise-robustness", help='Path to the dataset.')
     args = parser.parse_args()
 
     ## LOAD CONFIG
