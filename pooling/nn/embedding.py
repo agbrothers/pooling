@@ -9,22 +9,22 @@ class MutableEmbedding(nn.Embedding):
     Embedding Subclass that allows for additional 
     embeddings to be added post initialization. 
 
+    ARGUMENTS FOR nn.Embedding:
+      num_embd:int, 
+      dim_embd:int, 
+      idx_pad:int, 
+      max_norm:int, 
+      norm_type:float, 
+      scale_grad_by_freq:bool, 
+      sparse:bool, 
+      weight:Tensor,
+      device, 
+      dtype,
+
     '''
 
-    def __init__(
-            self,
-            num_embd:int, 
-            dim_embd:int, 
-            idx_pad:int=None, 
-            max_norm:int=None, 
-            norm_type:float=2, 
-            scale_grad_by_freq=False, 
-            sparse:bool=False, 
-            weight:Tensor=None,
-            device=None, 
-            dtype=None
-        ) -> None:
-        super().__init__(num_embd, dim_embd, idx_pad, max_norm, norm_type, scale_grad_by_freq, sparse, weight, device, dtype)
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
         torch.nn.init.normal_(self.weight, mean=0.0, std=0.02)
 
     def add_embd(self, num_embd: int):

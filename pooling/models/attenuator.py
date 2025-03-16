@@ -2,14 +2,15 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from pooling.nn.initialize import transformer_init
 from pooling.nn.transformer import Transformer
-from pooling.nn.pooling import (
+from pooling.nn.pool import (
     MaxPool, 
     AvgPool, 
     SumPool, 
     AdaPool, 
+    GemAdaPool, 
     ClsToken,
-    # AdaPool, 
     CtrPool,
 )
 
@@ -22,17 +23,11 @@ class Attenuator(nn.Module):
             dim_ff,
             num_layers,
             num_heads,
-            dropout_w,
-            dropout_e,
-            dropout_ff,
-            bias_attn,
-            bias_ff,
+            dropout,
             dim_input=None,
             dim_output=None,
-            flash=True,
             num_emb=2,            
             pos_emb=False,
-            pooling_norm=False,
             pooling_method="AdaPool",
             query_idx=0,
             seed=None,
@@ -47,31 +42,14 @@ class Attenuator(nn.Module):
         self._dim_output = dim_output
         self._num_layers = num_layers
         self._num_heads = num_heads
-        self._dropout_w = dropout_w,
-        self._dropout_e = dropout_e,
-        self._dropout_ff = dropout_ff,
-        self._bias_attn = bias_attn,
-        self._bias_ff = bias_ff,
-        self._pooling_norm = pooling_norm
+        self._dropout = dropout,
         self._pooling_method = pooling_method
         self._query_idx=query_idx
-        self._flash = flash
         self._query = False
         self._recurrent = False
 
         ## INITIALIE ENCODER
-        self.transformer = Transformer(
-            dim_hidden,
-            dim_ff,
-            num_layers,
-            num_heads,
-            dropout_w,
-            dropout_e,
-            dropout_ff,
-            bias_attn,
-            bias_ff,
-            flash,
-            **kwargs,
+        self.transformer = Transformer(dim_hidden, dim_ff, num_layers, num_heads, dropout, **kwargs,
         )
         self.proj_in = None
         if dim_input:
@@ -92,15 +70,18 @@ class Attenuator(nn.Module):
         elif pooling_method == "AvgPool":
             pooling_layer = AvgPool()
         elif pooling_method == "SumPool":
-            pooling_layer = SumPool(dim_hidden, pooling_norm)
+            pooling_layer = SumPool(dim_hidden)
         elif pooling_method == "AdaPool":
-            pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=query_idx) 
+            pooling_layer = AdaPool(dim_hidden, num_heads, query_idx=query_idx, **kwargs) 
+            self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
+        elif pooling_method == "GemAdaPool":
+            pooling_layer = GemAdaPool(dim_hidden, num_heads, query_idx=query_idx, **kwargs) 
             self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
         elif pooling_method == "ClsToken":
-            pooling_layer = ClsToken(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
+            pooling_layer = ClsToken(dim_hidden, num_heads, dropout, k=1, **kwargs)
             self._query = True
         elif pooling_method == "CtrPool":
-            pooling_layer = CtrPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
+            pooling_layer = CtrPool(dim_hidden, num_heads, dropout, k=1, **kwargs)
             self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
             self._query = True
         else:
@@ -110,7 +91,7 @@ class Attenuator(nn.Module):
 
         if seed:
             torch.manual_seed(seed)
-            self.apply(self.initialize)
+            self.apply(transformer_init)
         return
 
 
@@ -142,28 +123,6 @@ class Attenuator(nn.Module):
         if self.proj_out:
             pool = self.proj_out(pool)
         return pool
-
-
-    def initialize(self, module) -> None:
-        """ 
-        INITIALIZATION SCHEME AS IN 
-        [1] https://arxiv.org/pdf/1502.01852.pdf
-        [2] https://github.com/karpathy/minGPT/blob/master/mingpt/model.py#L163
-        
-        """
-        ## LINEAR LAYERS
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        ## LAYERNORMS
-        elif isinstance(module, nn.LayerNorm):
-            torch.nn.init.zeros_(module.bias)
-            torch.nn.init.ones_(module.weight)
-        ## EMBEDDING WEIGHTS
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-        return
 
 
     def get_query(self):
