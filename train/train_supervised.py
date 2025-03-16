@@ -15,11 +15,15 @@ from torch.utils.data import DataLoader, TensorDataset
 torch.set_float32_matmul_precision('high')
 
 from pooling.models.attenuator import Attenuator
+from pooling.nn.gem_attention import GemAttention
+from pooling.nn.attention import Attention
 from pooling.utils.diagnostics import get_gpu_memory, convert_size
 
 
 MODELS = {
     "Attenuator": Attenuator,
+    "Attention": Attention,
+    "GemAttention": GemAttention,
 }
 
 
@@ -94,12 +98,11 @@ def load_checkpoint(model, path):
     return model
     
 
-def load_dataset(experiment_path, cardinality, dim_vectors):
+def load_dataset(target, experiment_path, cardinality, dim_vectors):
     # Load data
-    method = os.path.basename(experiment_path)
     data_path = os.path.dirname(os.path.dirname(experiment_path)).replace("experiments", "data")
     X = np.load(os.path.join(data_path, f"X-N{cardinality}-d{dim_vectors}.npy"))   # SHAPE: [batch, num_vectors, dim_vectors]
-    y = np.load(os.path.join(data_path, f"y-N{cardinality}-d{dim_vectors}-{method}.npy"))  # SHAPE: [batch, aggregate_vector]
+    y = np.load(os.path.join(data_path, f"y-N{cardinality}-d{dim_vectors}-{target}.npy"))  # SHAPE: [batch, aggregate_vector]
 
     # Convert to torch tensors
     X = torch.tensor(X, dtype=torch.float32)
@@ -118,6 +121,7 @@ def kfold(
     model_config = config["MODEL_CONFIG"]
     cardinality = config["LEARNING_PARAMETERS"]["INPUT_CARDINALITY"]
     dim_vectors = config["LEARNING_PARAMETERS"]["INPUT_DIM"]
+    target = config["LEARNING_PARAMETERS"]["TARGET"]
     test_ratio = config["LEARNING_PARAMETERS"]["TEST_RATIO"]
     bs = config["LEARNING_PARAMETERS"]["BATCH_SIZE"]
     k = config["LEARNING_PARAMETERS"]["NUM_FOLDS"]
@@ -125,7 +129,7 @@ def kfold(
     results = []
 
     ## BUILD DATASETS
-    dataset = load_dataset(experiment_path, cardinality, dim_vectors)
+    dataset = load_dataset(target, experiment_path, cardinality, dim_vectors)
 
     ## KFOLD VARIABLES
     data_shape = dataset.tensors[0].shape
@@ -240,7 +244,7 @@ def train(
         wall_time = time.time() - start
         epoch_val_loss = val_loss / len(val_loader)
         epoch_train_loss = train_loss / len(train_loader)
-        print(f"Exp {seed}. Epoch {epoch + 1}/{epochs} | Train Loss: {epoch_train_loss:.4f} | Val Loss: {epoch_val_loss:.4f}")
+        print(f"Exp {seed}. Epoch {epoch + 1}/{epochs} | Train Loss: {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
         log(history_path, epoch_train_loss, epoch_val_loss, wall_time)
         
         ## SAVE CHECKPOINT
@@ -302,7 +306,7 @@ if __name__ == "__main__":
 
     # PARSE ARGUMENTS
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-p', '--experiment_path', default="./experiments/noise-robustness", help='Relative path to the experiment config.')
+    parser.add_argument('-p', '--experiment_path', default="./experiments/gem-baseline/mix-gem", help='Relative path to the experiment config.')
     args = parser.parse_args()
 
     ## BUILD PATHS FROM ARGPARSE INPUT
@@ -321,9 +325,8 @@ if __name__ == "__main__":
 
     ## K-FOLD CROSS VALIDATION
     for path,config in list(zip(paths, configs)):
-        method = config["MODEL_CONFIG"].get("pooling_method", "mlp") #.upper()
         target = os.path.basename(path).upper()
         path = os.path.join(base, path)
         for i in range(config["LEARNING_PARAMETERS"]["NUM_EXPERIMENTS"]):
-            print(f"\nSTARTING EXPERIMENT FOR {method} POOLING APPROXIMATION OF {target}:  {i+1}/{config['LEARNING_PARAMETERS']['NUM_EXPERIMENTS']}")
+            print(f"\nSTARTING EXPERIMENT FOR GEM APPROXIMATION OF {target}:  {i+1}/{config['LEARNING_PARAMETERS']['NUM_EXPERIMENTS']}")
             kfold(path, config, load_dataset)
