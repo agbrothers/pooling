@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor, BoolTensor
 
-from pooling.nn.attention import MultiHeadAttention
-from pooling.nn.transformer import FeedForward
+from pooling.nn.attention import Attention
+from pooling.nn.gem_attention import GemAttention
 
 
 class Pool(nn.Module):
@@ -40,7 +40,7 @@ class AvgPool(Pool):
     Take the average value per feature over the embeddings. 
     
     """
-            
+    
     def forward(self, x:Tensor, mask:BoolTensor=None):
         if mask is not None:
             x = x[:, mask]        
@@ -74,16 +74,37 @@ class AdaPool(Pool):
     
     """
 
-    def __init__(self, dim_hidden, num_heads, dropout_w=0, dropout_e=0, dropout_ff=0, bias=False, flash=True, query_idx=0, **kwargs):
+    def __init__(self, dim_hidden, num_heads, query_idx=0, **kwargs):
         super().__init__(dim=-2)
         self.dim_hidden = dim_hidden
-        self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias, flash)
+        self.attn = Attention(dim_hidden, num_heads, **kwargs)
         self.query_idx = query_idx
 
     def forward(self, x:Tensor, mask:BoolTensor=None):  
         ## AGGREGATE
-        query = x[:, self.query_idx] 
-        residual = self.attn(query, x, mask)
+        query = x[:, self.query_idx:self.query_idx+1] 
+        residual = self.attn(context=x, query=query, mask=mask)
+        return query + residual
+    
+class GemAdaPool(Pool): 
+    """
+    DESC: 
+    Compute a weighted average per head over the input vectors using attention. 
+    By default, one of the input vectors is chosen is used as a query to compute
+    the relational weights via dot product with respect to the other input vectos. 
+    
+    """
+
+    def __init__(self, dim_hidden, num_heads, query_idx, **kwargs):
+        super().__init__(dim=-2)
+        self.dim_hidden = dim_hidden
+        self.attn = GemAttention(dim_hidden, num_heads, **kwargs)
+        self.query_idx = query_idx
+
+    def forward(self, x:Tensor, mask:BoolTensor=None):  
+        ## AGGREGATE
+        query = x[:, self.query_idx:self.query_idx+1] 
+        residual = self.attn(context=x, query=query, mask=mask)
         return query + residual
     
 
@@ -97,7 +118,7 @@ class ClsToken(Pool):
 
     def __init__(self, dim_hidden, num_heads, dropout_w=0, dropout_e=0, bias=False, flash=True, query_idx=0, k=1, **kwargs):
         super().__init__(dim=-2)
-        self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias)
+        self.attn = Attention(dim_hidden, num_heads, dropout_w, dropout_e, bias)
         self.cls_token = nn.Parameter(torch.rand(1, k, dim_hidden))
         self.cls_token_idx = query_idx
         self.k = k
@@ -152,6 +173,9 @@ if __name__ == "__main__":
     b_ = torch.tensor([4, 5, 6, 7, 8, 9])
     x = torch.meshgrid(a_, b_, indexing="xy")[0].T.unsqueeze(0).to(torch.float32)
     mask = torch.BoolTensor([0,1,0,0,1,0])
+
+    # pooling_layer = GemPool(d, 1, dropout_w, dropout_e, bias=False, flash=True, p=3)
+
 
     ## ASSERT THAT ALL APPROACHES AGGREGATE EMBEDDINGS STACKS TO THE SAME SHAPE
     pooling_layer = MaxPool()
