@@ -1,0 +1,20 @@
+EXPERIMENT_NAME: CUBIC-SCALE-P
+
+LEARNING_PARAMETERS: 
+  NUM_EXPERIMENTS: 1
+  LEARNING_RATE: 5.0e-4 
+  BATCH_SIZE: 750 
+  EPOCHS: 100
+  NUM_FOLDS: 5
+  TEST_RATIO: 0.1
+  INPUT_CARDINALITY: 32
+  INPUT_DIM: 16
+  TARGET: cubic
+  DEBUG: False
+
+MODEL_CONFIG:
+  model: Attention
+  num_heads: 1 
+  dim_hidden: 16
+  dropout: 0.
+  flash: True 
