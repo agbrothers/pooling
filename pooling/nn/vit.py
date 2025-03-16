@@ -28,7 +28,7 @@ def unfreeze_all_layers_(module):
 
 class ViT(nn.Module):
     
-    def __init__(self, size_img, size_patch, dim_hidden,  num_classes, num_layers,  dropout_embd=0.,  channels=3, seed=None, **kwargs):
+    def __init__(self, size_img, size_patch, dim_hidden, num_classes, num_layers,  dropout_embd=0.,  channels=3, seed=None, **kwargs):
         super().__init__()
         image_height, image_width = pair(size_img)
         patch_height, patch_width = pair(size_patch)
@@ -50,11 +50,9 @@ class ViT(nn.Module):
         self.pos_embd  = nn.Parameter(torch.randn(1, num_patches + 1, dim_hidden))
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim_hidden))
         self.dropout = nn.Dropout(dropout_embd)
-        self.transformer = Transformer(dim_hidden, num_layers, **kwargs)
-        self.classifier = nn.Sequential(
-            nn.LayerNorm(dim_hidden),
-            nn.Linear(dim_hidden, num_classes)
-        )
+        self.transformer = Transformer(dim_hidden, num_layers=num_layers, **kwargs)
+        self.classifier = nn.Linear(dim_hidden, num_classes)
+        
         ## INITIALIZE WEIGHTS
         if seed:
             self.apply(transformer_init)
@@ -69,7 +67,7 @@ class ViT(nn.Module):
         cls_tokens = repeat(self.cls_token, '1 n d -> b n d', b = x.shape[0])
         x = torch.cat((cls_tokens, x), dim = 1)
 
-        x += self.pos_embedding
+        x += self.pos_embd
         x = self.dropout(x)
         return x
 
@@ -81,3 +79,22 @@ class ViT(nn.Module):
         cls_tokens = x[:, 0]
         return self.classifier(cls_tokens)
     
+
+if __name__ == "__main__":
+
+    model = ViT(
+        size_img = 256,
+        size_patch = 32,
+        dim_hidden = 1024,
+        dim_ff = 2048,
+        num_classes = 1000,
+        num_layers = 6,
+        num_heads = 16,
+        dropout = 0.1,
+        dropout_emb = 0.1,
+    )
+
+    img = torch.randn(1, 3, 256, 256)
+
+    preds = model(img)
+    assert preds.shape == (1, 1000), 'correct logits outputted'    
