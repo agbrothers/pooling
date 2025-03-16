@@ -4,23 +4,26 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class MultiHeadAttention(nn.Module):
+class Attention(nn.Module):
 
-    def __init__(self, dim_hidden, num_heads, dropout_w=0, dropout_e=0, bias=False, flash=True, **kwargs):
+    def __init__(self, dim_hidden, num_heads, dropout=0., flash=True, **kwargs):
         super().__init__()
-        self.Q = nn.Linear(dim_hidden, dim_hidden, bias)
-        self.KV = nn.Linear(dim_hidden, 2*dim_hidden, bias)
-        self.out = nn.Linear(dim_hidden, dim_hidden, bias)
-        self.dropout_w = nn.Dropout(dropout_w)
-        self.dropout_e = nn.Dropout(dropout_e)
+        self.Q = nn.Linear(dim_hidden, dim_hidden, False)
+        self.KV = nn.Linear(dim_hidden, 2*dim_hidden, False)
+        self.out = nn.Linear(dim_hidden, dim_hidden, False)
+        self.dropout_w = nn.Dropout(dropout)
+        self.dropout_e = nn.Dropout(dropout)
         self.num_heads = num_heads
         self.dim_hidden = dim_hidden
         self.dim_attn = dim_hidden // num_heads
         self.scale = 1 / math.sqrt(dim_hidden)
         self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention') and flash
+        return
 
-    def forward(self, query, context, mask=None):
+    def forward(self, context, query=None, mask=None):
 
+        if query is None: query = context
+            
         ## PROJECT INPUTS
         q = self.Q(query)
         k, v = self.KV(context).split(self.dim_hidden, dim=2)

@@ -4,124 +4,132 @@ import torch.nn as nn
 from torch import Tensor
 from copy import deepcopy
 
-from pooling.nn.attention import MultiHeadAttention
+from pooling.nn.attention import Attention
+from pooling.nn.gem_attention import GemAttention
+from pooling.nn.initialize import transformer_init
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim_hidden, dim_ff, dropout, bias=False):
+    def __init__(self, dim_hidden, dim_ff, dropout):
         super().__init__()
-        self.l_in  = nn.Linear(dim_hidden, dim_ff, bias)
-        self.l_out = nn.Linear(dim_ff, dim_hidden, bias)
-        self.gelu = nn.GELU()
-        self.dropout = nn.Dropout(dropout)
+        self.mlp = nn.Sequential(
+            nn.LayerNorm(dim_hidden),
+            nn.Linear(dim_hidden, dim_ff), 
+            nn.GELU(), 
+            nn.Dropout(dropout), 
+            nn.Linear(dim_ff, dim_hidden), 
+            nn.Dropout(dropout), 
+        )
+        return
 
     def forward(self, x):
-        x = self.l_in(x)
-        x = self.gelu(x)
-        x = self.l_out(x)
-        x = self.dropout(x)
-        return x
+        return self.mlp(x)
     
 
 class TransformerLayer(nn.Module):
 
-    def __init__(self, dim_hidden, dim_ff, num_heads, dropout_w=0, dropout_e=0, dropout_ff=0, bias_attn=False, bias_ff=False, flash=True, **kwargs): 
+    def __init__(self, dim_hidden, dim_ff, num_heads, dropout, gem=False, **kwargs): 
         super().__init__()
-        self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash)
-        self.ff   = FeedForward(dim_hidden, dim_ff, dropout_ff, bias_ff)
+        attn_cls = GemAttention if gem else Attention
+        self.attn = attn_cls(dim_hidden, num_heads, dropout, **kwargs)
+        self.ff = FeedForward(dim_hidden, dim_ff, dropout)
         self.norm_attn = nn.LayerNorm(dim_hidden)
         self.norm_ff   = nn.LayerNorm(dim_hidden)
-        self._dim_hidden = dim_hidden
-        self._dim_ff = dim_ff
+        return
 
-    def forward(self, query, context=None, mask=None):  
-        ## MULTIHEAD ATTENTION + SKIP CONNECTION
-        if context is None: context = query
-        residual = self.attn(self.norm_attn(query), self.norm_attn(context), mask)
-        x = query + residual
+    def forward(self, x, mask=None):  
+        ## SKIP CONNECTION + ATTENTION
+        x = x + self.attn(self.norm_attn(x), mask)
 
-        ## FEED FORWARD NETWORK + SKIP CONNECTION   
-        residual = self.ff(self.norm_ff(x))
-        return x + residual
-
-
-class Encoder(nn.Module):
-
-    def __init__(self, encoder_layer, num_layers):
-        super().__init__()
-        self.layers = nn.ModuleList([deepcopy(encoder_layer) for _ in range(num_layers)])
-        self.norm = nn.LayerNorm(encoder_layer._dim_hidden)
-        self._num_layers = num_layers
-
-    def forward(self, x, mask=None) -> Tensor: 
-        for layer in self.layers: 
-            x = layer(x, mask=mask)
-        # return self.norm(x)
-        return x
+        ## SKIP CONNECTION + FEED FORWARD 
+        return x + self.ff(self.norm_ff(x))
 
 
 class Transformer(nn.Module):
 
-    def __init__(
-            self, 
-            dim_hidden,
-            dim_ff,
-            num_layers,
-            num_heads,
-            dropout_w,
-            dropout_e,
-            dropout_ff,
-            bias_attn,
-            bias_ff,
-            flash,
-            seed=None,
-            **kwargs,
-        ) -> None: 
+    def __init__(self, dim_hidden, dim_ff, num_layers, num_heads, dropout, seed=None, **kwargs) -> None: 
         super().__init__()
-
         ## SET MODEL PROPERTIES
         self._dim_hidden = dim_hidden
         self._dim_ff = dim_ff
         self._num_layers = num_layers
         self._num_heads = num_heads
-        self._dropout_w = dropout_w,
-        self._dropout_e = dropout_e,
-        self._dropout_ff = dropout_ff,
-        self._bias_attn = bias_attn,
-        self._bias_ff = bias_ff,
 
-        ## INITIALIE ENCODER
-        layer = TransformerLayer(dim_hidden, dim_ff, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, bias_ff, flash)
-        self.encoder = Encoder(layer, num_layers)
+        ## INITIALIZE ENCODER
+        layer = TransformerLayer(dim_hidden, dim_ff, num_heads, dropout, **kwargs)
+        self.layers = nn.ModuleList([deepcopy(layer) for _ in range(num_layers)])
+        self.norm = nn.LayerNorm(dim_hidden)
 
         ## INITIALIZE WEIGHTS
         if seed:
-            self.apply(self.initialize)
+            self.apply(transformer_init)
             for name,param in self.named_parameters():
                 if name.endswith("out.weight"):
                     torch.nn.init.normal_(param, mean=0.0, std=0.02/math.sqrt(2 * num_layers))
         return
 
-    def initialize(self, module) -> None:
-        """ 
-        INITIALIZATION SCHEME AS IN 
-        [1] https://arxiv.org/pdf/1502.01852.pdf
-        [2] https://github.com/karpathy/minGPT/blob/master/mingpt/model.py#L163
-        
-        """
-        ## LINEAR LAYERS
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        ## LAYERNORMS
-        elif isinstance(module, nn.LayerNorm):
-            torch.nn.init.zeros_(module.bias)
-            torch.nn.init.ones_(module.weight)
-        ## EMBEDDING WEIGHTS
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-        return
-
     def forward(self, x, mask=None) -> Tensor:
-        return self.encoder(x, mask=mask)
+        for layer in self.layers: 
+            x = layer(x, mask=mask)     
+        return self.norm(x)
+
+
+if __name__ == "__main__":
+
+    d = 4
+
+    model = Transformer(
+            ## TRANSFORMER PARAMETERS
+            dim_hidden=d,
+            dim_ff=4*d,
+            num_layers=2,
+            num_heads=1,
+            dropout=0.,
+            gem=True,
+            flash=False,
+            ## GEM ATTENTION EXPERIMENTAL PARAMETERS
+            b=0.9,
+            p=1,
+            p_min=1e-4,
+            p_max=5e+4,
+            tanh_rate=5e-3,
+            eps=1e-10,
+            lse=False,
+            norm_v=False,
+            scale_p=False,
+            ## MISC PARAMETERS
+            freeze_QKV=True,
+            seed=None,
+        )
+    
+    a = torch.tensor([[0, 1, 2, 3, 4, 5]]).T
+    X = torch.tile(a, (1, 1, d)).to(torch.float32) + 1
+    q = torch.zeros(1,1,d)
+    mask = torch.BoolTensor([0,1,0,0,1,0])
+
+    y = torch.std(X, dim=-2)
+    # a = model(x=X)
+
+    ## SET WEIGHTS EQUAL TO STD
+    # with torch.no_grad():
+    #     model.encoder.layers[0].attn.p[:] = 1
+    #     model.encoder.layers[1].attn.p[:] = 2
+    #     model.encoder.layers[0].attn.Q.weight[:] = 0
+    #     model.encoder.layers[1].attn.Q.weight[:] = 0
+    #     model.encoder.layers[0].attn.out.weight[:] *= -1
+
+    # b = model(x=X)
+
+    with torch.no_grad():
+        model.encoder.layers[1].attn.p[:] = 2
+        model.encoder.layers[0].attn.Q.weight[:] = 0
+        model.encoder.layers[1].attn.Q.weight[:] = 0
+        model.encoder.layers[0].attn.out.weight[:-1] *= 0
+        model.encoder.layers[0].attn.out.weight[-1] *= -1
+        model.encoder.layers[1].attn.out.weight[:,0] = -1
+        model.encoder.layers[1].attn.out.weight[:,1:-1] = 0
+        model.encoder.layers[1].attn.out.weight[:,-1] = 1
+    
+    c = model(x=X)
+
+    catch=True
