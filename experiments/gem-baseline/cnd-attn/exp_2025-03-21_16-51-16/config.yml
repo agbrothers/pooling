@@ -1,0 +1,23 @@
+EXPERIMENT_NAME: CND-ATTN
+LEARNING_PARAMETERS:
+  BATCH_SIZE: 64
+  DEBUG: false
+  EPOCHS: 100
+  LEARNING_RATE: 0.0003
+  LOSS: BCELogits
+  NUM_EXPERIMENTS: 1
+  NUM_FOLDS: 5
+  SEED: 7
+  TEST_RATIO: 0.1
+MODEL_CONFIG:
+  dim_ff: 512
+  dim_hidden: 128
+  dropout: 0.0
+  dropout_embd: 0.1
+  gem: false
+  model: ViT
+  num_classes: 1
+  num_heads: 8
+  num_layers: 12
+  size_img: 224
+  size_patch: 32
