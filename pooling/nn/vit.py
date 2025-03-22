@@ -5,6 +5,7 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from einops import repeat
 from einops.layers.torch import Rearrange
 
@@ -38,6 +39,11 @@ class ViT(nn.Module):
 
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         dim_patch = channels * patch_height * patch_width
+
+        self.size_img = size_img
+        self.size_patch = size_patch
+        self.num_classes = num_classes
+
         # assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
 
         self.to_patch_embedding = nn.Sequential(
@@ -77,8 +83,11 @@ class ViT(nn.Module):
         x = self.transformer(x)
 
         cls_tokens = x[:, 0]
-        return self.classifier(cls_tokens)
-    
+
+        logits = self.classifier(cls_tokens)
+        if self.num_classes == 1: logits = logits.squeeze(-1)
+        return logits
+
 
 if __name__ == "__main__":
 
@@ -91,10 +100,10 @@ if __name__ == "__main__":
         num_layers = 6,
         num_heads = 16,
         dropout = 0.1,
-        dropout_emb = 0.1,
+        dropout_embd = 0.1,
     )
 
-    img = torch.randn(1, 3, 256, 256)
+    img = torch.randn(2, 3, 256, 256)
 
     preds = model(img)
-    assert preds.shape == (1, 1000), 'correct logits outputted'    
+    assert preds.shape == (2, 1000), 'correct logits outputted'    

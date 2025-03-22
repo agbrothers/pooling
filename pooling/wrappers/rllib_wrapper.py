@@ -5,7 +5,6 @@ from torch import Tensor
 import ray
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.utils.annotations import override
 if ray.__version__ == '1.13.0': import gym
 else: import gymnasium as gym

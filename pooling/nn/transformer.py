@@ -5,7 +5,8 @@ from torch import Tensor
 from copy import deepcopy
 
 from pooling.nn.attention import Attention
-from pooling.nn.gem_attention import GemAttention
+# from pooling.nn.gem_attention import GemAttention
+from pooling.nn.gem_attention_2 import GemAttention
 from pooling.nn.initialize import transformer_init
 
 

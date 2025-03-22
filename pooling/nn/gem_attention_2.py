@@ -21,6 +21,7 @@ class GemAttention(nn.Module):
             eps=1e-10,
             lse=True,
             norm_v=True,
+            activate_v=False,
             scale_p=True,
             freeze_QKV=False,
             squeeze_output=False,
@@ -30,6 +31,7 @@ class GemAttention(nn.Module):
         self.Q = nn.Linear(dim_hidden, dim_hidden, bias=False)
         self.KV = nn.Linear(dim_hidden, 2*dim_hidden, bias=False)
         self.out = nn.Linear(dim_hidden, dim_hidden, bias=False)
+        self.actv = F.relu
         self.dropout_w = nn.Dropout(dropout)
         self.dropout_e = nn.Dropout(dropout)
         self.num_heads = num_heads
@@ -47,9 +49,12 @@ class GemAttention(nn.Module):
         self.eps = eps
         self.lse = lse
         self.norm_v = norm_v
+        self.activate_v = activate_v
         self.scale_p = scale_p
         self.tanh_rate = tanh_rate
         self.squeeze = squeeze_output
+
+        assert not (norm_v and activate_v), "Must select either v minmax normalization or ReLU activation, not both."
 
         if freeze_QKV:
             self.freeze_QKV()
@@ -88,6 +93,9 @@ class GemAttention(nn.Module):
 
         if query is None: query = context
 
+        ## INSTEAD OF EXP/LOG - USE THE FIRST FEW TERMS OF THE TAYLOR EXPANSION FOR SPEED? 
+        ## first 3 terms at least
+
         ## PROJECT INPUTS
         q = self.Q(query)
         k, v = self.KV(context).split(self.dim_hidden, dim=2)
@@ -98,47 +106,35 @@ class GemAttention(nn.Module):
             v_max = max(v, dim=-2, keepdim=True).values
             v_min = min(v, dim=-2, keepdim=True).values
             v = self.norm(v, v_max, v_min)
+        elif self.activate_v:
+            v = self.actv(v) + self.eps
 
         ## COMPUTE f(v)
-        if self.lse:
-            z = p * log(v) 
-            Z_max = z.max(dim=-2, keepdim=True).values
-            v = exp(z - Z_max) 
-        else:
-            v = v ** p
+        z = p * log(v) 
 
         ## SPLIT ATTENTION HEADS
         b = query.size(0) # Assume [batch, seq_len, hidden]
         q = q.view(b, -1, self.num_heads, self.dim_attn).transpose(1, 2)
         k = k.view(b, -1, self.num_heads, self.dim_attn).transpose(1, 2)
-        v = v.view(b, -1, self.num_heads, self.dim_attn).transpose(1, 2)
+        z = z.view(b, -1, 1, self.num_heads, self.dim_attn).transpose(1, 3)
 
         ## COMPUTE ATTENTION (WEIGHTED MEAN)
-        if self.flash:
-            mean = F.scaled_dot_product_attention(
-                q, k, v, 
-                attn_mask=mask, 
-                dropout_p=self.dropout_w.p if self.training else 0, 
-                is_causal=False,
-                scale=self.scale,
-            )
-        else:
-            dot_product = torch.einsum("bhqa,bhka->bhqk", (q, k))
-            if mask: dot_product = dot_product.masked_fill_(mask.logical_not(), float("-inf"))
-            w = torch.softmax(dot_product * self.scale, dim=-1)
-            w = self.dropout_w(w)
-            mean = torch.einsum("bhqv,bhva->bhqa", (w, v)) #.transpose(1, 2).contiguous().view_as(query) #.clamp(min=self.float_min) # prevent float underflow
+        dot_product = torch.einsum("bhqa,bhka->bhqk", (q, k))
+        if mask: dot_product = dot_product.masked_fill_(mask.logical_not(), float("-inf"))
+        w = torch.log_softmax(dot_product * self.scale, dim=-1)
+        w = self.dropout_w(w)[..., None]
+        mean = torch.logsumexp(w + z, dim=-2) 
 
         ## RESHAPE MEAN
-        mean = mean.transpose(1, 2).contiguous().view_as(query) #.clamp(min=self.float_min)  # re-assemble all head outputs side by side
+        mean = mean.transpose(1, 2).contiguous().view_as(query) 
+        e = exp(mean / p)
 
         ## COMPUTE f^-1(v)
-        e = exp( 1/p * (Z_max + log(mean)) ) if self.lse else mean ** (1/p)
         if self.norm_v:
             e = self.norm_inv(e, v_max, v_min)
-        assert not torch.any(torch.isnan(e)), "Nans in GeM embeddings"
-        if self.squeeze:
-            e = e.squeeze(-2)
+        # assert not torch.any(torch.isnan(e)), "Nans in GeM embeddings"
+        # if self.squeeze:
+        #     e = e.squeeze(-2)
         return self.dropout_e(self.out(e))
 
     def freeze_QKV(self):
