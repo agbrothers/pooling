@@ -12,11 +12,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data.dataset import Subset
 from torch.utils.data import DataLoader, TensorDataset
-torch.set_float32_matmul_precision('high')
+# torch.set_float32_matmul_precision('high')
 
 from pooling.models.attenuator import Attenuator
 from pooling.nn.gem_attention import GemAttention
 from pooling.nn.attention import Attention
+from pooling.nn.vit import ViT
 from pooling.utils.diagnostics import get_gpu_memory, convert_size
 
 
@@ -24,6 +25,13 @@ MODELS = {
     "Attenuator": Attenuator,
     "Attention": Attention,
     "GemAttention": GemAttention,
+    "ViT": ViT,
+}
+LOSSES = {
+    "MSE": nn.MSELoss(),
+    "CrossEntropy": nn.CrossEntropyLoss(),
+    "NLL": nn.NLLLoss(),
+    "BCELogits": nn.BCEWithLogitsLoss(reduction="sum"),
 }
 
 
@@ -43,7 +51,7 @@ def set_seed(seed):
 def configure_logger(path, config):
     ## CREATE LOGGING DIRECTORY
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-    model_method = config["MODEL_CONFIG"].get("pooling_method", "mlp")
+    model_method = config["MODEL_CONFIG"].get("pooling_method", "exp")
     experiment_name =  f"{model_method}_{timestamp}"
     log_dir = os.path.join(path, experiment_name)
     os.makedirs(log_dir)
@@ -98,8 +106,13 @@ def load_checkpoint(model, path):
     return model
     
 
-def load_dataset(target, experiment_path, cardinality, dim_vectors):
-    # Load data
+def load_dataset(experiment_path, config):
+    ## PARSE CONFIG
+    cardinality = config["LEARNING_PARAMETERS"]["INPUT_CARDINALITY"]
+    dim_vectors = config["LEARNING_PARAMETERS"]["INPUT_DIM"]
+    target = config["LEARNING_PARAMETERS"]["TARGET"]
+
+    ## LOAD DATA
     data_path = os.path.dirname(os.path.dirname(experiment_path)).replace("experiments", "data")
     X = np.load(os.path.join(data_path, f"X-N{cardinality}-d{dim_vectors}.npy"))   # SHAPE: [batch, num_vectors, dim_vectors]
     y = np.load(os.path.join(data_path, f"y-N{cardinality}-d{dim_vectors}-{target}.npy"))  # SHAPE: [batch, aggregate_vector]
@@ -119,9 +132,6 @@ def kfold(
     ):
     ## PARSE CONFIG
     model_config = config["MODEL_CONFIG"]
-    cardinality = config["LEARNING_PARAMETERS"]["INPUT_CARDINALITY"]
-    dim_vectors = config["LEARNING_PARAMETERS"]["INPUT_DIM"]
-    target = config["LEARNING_PARAMETERS"]["TARGET"]
     test_ratio = config["LEARNING_PARAMETERS"]["TEST_RATIO"]
     bs = config["LEARNING_PARAMETERS"]["BATCH_SIZE"]
     k = config["LEARNING_PARAMETERS"]["NUM_FOLDS"]
@@ -129,11 +139,11 @@ def kfold(
     results = []
 
     ## BUILD DATASETS
-    dataset = load_dataset(target, experiment_path, cardinality, dim_vectors)
+    dataset = load_dataset(experiment_path, config)
 
     ## KFOLD VARIABLES
-    data_shape = dataset.tensors[0].shape
-    total_size = data_shape[0]
+    # data_shape = dataset.tensors[0].shape
+    total_size = len(dataset)
     test_size = int(total_size * test_ratio)
     train_size = total_size - test_size
     fold_size = train_size // k
@@ -141,7 +151,7 @@ def kfold(
 
     ## INITIALIZE MODEL
     model_config.update({
-        "num_vectors": data_shape[1],
+        # "num_vectors": data_shape[1],
         "dim_ff": 4*model_config["dim_hidden"],
     })
     model_class = MODELS[model_config["model"]]
@@ -175,9 +185,9 @@ def kfold(
         train_idxs_right = list(range(vR, train_size)) if vR<train_size else []
         train_idxs = train_idxs_left + train_idxs_right
         val_idxs   = list(range(vL, vR))
-        train_loader = DataLoader(Subset(dataset, train_idxs), batch_size=bs, shuffle=True,  generator=torch.Generator().manual_seed(seed))
-        val_loader   = DataLoader(Subset(dataset, val_idxs),   batch_size=bs, shuffle=False, generator=torch.Generator().manual_seed(seed))
-        test_loader  = DataLoader(Subset(dataset, test_idxs),  batch_size=bs, shuffle=False, generator=torch.Generator().manual_seed(seed))
+        train_loader = DataLoader(Subset(dataset, train_idxs), batch_size=bs, shuffle=True,  generator=torch.Generator().manual_seed(seed)) #num_workers=os.cpu_count()//4
+        val_loader   = DataLoader(Subset(dataset, val_idxs),   batch_size=bs, shuffle=False, generator=torch.Generator().manual_seed(seed)) #num_workers=os.cpu_count()//4
+        test_loader  = DataLoader(Subset(dataset, test_idxs),  batch_size=bs, shuffle=False, generator=torch.Generator().manual_seed(seed)) #num_workers=os.cpu_count()//4
 
         print(f"\nTRAINING FOLD {i+1}/{k}")
         test_loss = train(
@@ -209,8 +219,10 @@ def train(
     device = next(model.parameters()).device
 
     ## INITIALIZE LOSS AND OPTIMIZER
-    criterion = nn.MSELoss() 
+    criterion = LOSSES[config["LEARNING_PARAMETERS"]["LOSS"]]
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    n = len(train_loader.dataset)
+    m = len(val_loader.dataset)
 
     ## TRAINING LOOP
     best_loss = torch.inf
@@ -218,33 +230,50 @@ def train(
         start = time.time()
         model.train()
         train_loss = 0.0
+        train_acc = 0.0
         for batch_X, batch_y in tqdm(train_loader):
-            batch_X, batch_y = batch_X.to(device), batch_y.to(device)
+            batch_X, batch_y = batch_X.to(device), batch_y.to(device).float()  
             
             ## INFERENCE
-            predictions = model(batch_X)
-            loss = criterion(predictions, batch_y)
+            output = model(batch_X)
+            loss = criterion(output, batch_y)
             
             ## BACKPROP
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()            
             train_loss += loss.item()
-        
+            
+            if isinstance(criterion, nn.BCEWithLogitsLoss):
+                preds = (torch.sigmoid(output) > 0.5).float()  
+                train_acc += (preds == batch_y).sum().item()                
+
         ## VALIDATION
         model.eval()
         val_loss = 0.0
+        val_acc = 0.0
+        val_loader.dataset.dataset.train = False
         with torch.no_grad():
-            for batch_X, batch_y in val_loader:
-                batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-                predictions = model(batch_X)
-                loss = criterion(predictions, batch_y)
+            for batch_X, batch_y in tqdm(val_loader):
+                batch_X, batch_y = batch_X.to(device), batch_y.to(device).float()
+                output = model(batch_X)
+                loss = criterion(output, batch_y)
                 val_loss += loss.item()
+                if isinstance(criterion, nn.BCEWithLogitsLoss):
+                    preds = (torch.sigmoid(output) > 0.5).float()  
+                    val_acc += (preds == batch_y).sum().item()    
 
+        val_loader.dataset.dataset.train = True
         wall_time = time.time() - start
-        epoch_val_loss = val_loss / len(val_loader)
-        epoch_train_loss = train_loss / len(train_loader)
-        print(f"Exp {seed}. Epoch {epoch + 1}/{epochs} | Train Loss: {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
+        epoch_train_loss = train_loss / n
+        epoch_train_acc = train_acc / n
+        epoch_val_loss = val_loss / m
+        epoch_val_acc = val_acc / m
+        if isinstance(criterion, nn.BCEWithLogitsLoss):
+            print(f"Exp {seed}. Epoch {epoch + 1}/{epochs} | Train Loss: {epoch_train_loss:.4f} | Train Acc: {epoch_train_acc:.4f} | Val Loss: {epoch_val_loss:.4f} | Val Acc: {epoch_val_acc:.4f}")
+        else:    
+            print(f"Exp {seed}. Epoch {epoch + 1}/{epochs} | Train Loss: {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
+
         log(history_path, epoch_train_loss, epoch_val_loss, wall_time)
         
         ## SAVE CHECKPOINT
@@ -258,6 +287,7 @@ def train(
     ## TESTING
     model.eval()
     test_loss = 0.0
+    test_loader.dataset.dataset.train = False
     with torch.no_grad():
         for batch_X, batch_y in test_loader:
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
@@ -272,34 +302,6 @@ def train(
     save_checkpoint(log_dir, model, test_loss, tag="final_")
     return test_loss
 
-
-# def compute_baseline_scores(test_loader, device, criterion):
-#     ## NAIVE CENTROID GUESS
-#     test_loss = 0.0
-#     with torch.no_grad():
-#         for batch_X, batch_y in test_loader:
-#             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-#             predictions = batch_X.mean(axis=1)
-#             loss = criterion(predictions, batch_y)
-#             test_loss += loss.item()
-#
-#     ## SAVE THE FINAL MODEL
-#     test_loss = test_loss / len(test_loader)
-#     print(test_loss)
-#
-#     ## NAIVE VECTOR OF INTEREST GUESS
-#     test_loss = 0.0
-#     with torch.no_grad():
-#         for batch_X, batch_y in test_loader:
-#             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-#             predictions = batch_X[:,0]
-#             loss = criterion(predictions, batch_y)
-#             test_loss += loss.item()
-#
-#     ## SAVE THE FINAL MODEL
-#     test_loss = test_loss / len(test_loader)
-#     print(test_loss)
-#     return
 
 
 if __name__ == "__main__":
