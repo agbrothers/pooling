@@ -117,9 +117,25 @@ class CtrPool(AdaPool):
     AdaPool using a centroid query
     
     """
-    def get_query(self, x, **kwargs):
-        return torch.mean(x, dim=1, keepdim=True)
+    def forward(self, x:Tensor, mask:BoolTensor=None):  
+        ## AGGREGATE
+        query = torch.mean(x, dim=1, keepdim=False)
+        residual = self.attn(query, x, mask)
+        return residual    
+
+
+class FocalPool(AdaPool): 
+    """
+    DESC: 
+    AdaPool using a centroid query
     
+    """
+
+    def forward(self, x:Tensor, mask:BoolTensor=None):  
+        ## AGGREGATE
+        query = torch.mean(x[:, self.query_idx], dim=1, keepdim=False)
+        residual = self.attn(query, x, mask)
+        return residual 
 
 
 if __name__ == "__main__":

@@ -9,8 +9,8 @@ from pooling.nn.pooling import (
     SumPool, 
     AdaPool, 
     ClsToken,
-    # AdaPool, 
     CtrPool,
+    FocalPool,
 )
 
 
@@ -95,14 +95,16 @@ class Attenuator(nn.Module):
             pooling_layer = SumPool(dim_hidden, pooling_norm)
         elif pooling_method == "AdaPool":
             pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=query_idx) 
-            self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
+            # self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
         elif pooling_method == "ClsToken":
             pooling_layer = ClsToken(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
             self._query = True
         elif pooling_method == "CtrPool":
-            pooling_layer = CtrPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
-            self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
-            self._query = True
+            pooling_layer = CtrPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash)
+            # self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
+            # self._query = True
+        elif pooling_method == "FocalPool":
+            pooling_layer = FocalPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, query_idx=query_idx)
         else:
             raise ValueError("Invalid `pooling_method` argument for AttenuationNetwork.")
 
