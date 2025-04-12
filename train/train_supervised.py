@@ -2,6 +2,7 @@ import os
 import time
 import yaml
 import glob
+import shutil
 import random
 import argparse
 import numpy as np
@@ -12,14 +13,26 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data.dataset import Subset
 from torch.utils.data import DataLoader, TensorDataset
-torch.set_float32_matmul_precision('high')
+# torch.set_float32_matmul_precision('high')
 
 from pooling.models.attenuator import Attenuator
+# from pooling.nn.gem_attention import GemAttention
+from pooling.nn.attention import MultiHeadAttention
+from pooling.nn.vit import ViT
 from pooling.utils.diagnostics import get_gpu_memory, convert_size
 
 
 MODELS = {
     "Attenuator": Attenuator,
+    "Attention": MultiHeadAttention,
+    # "GemAttention": GemAttention,
+    "ViT": ViT,
+}
+LOSSES = {
+    "MSE": nn.MSELoss(),
+    "CrossEntropy": nn.CrossEntropyLoss(),
+    "NLL": nn.NLLLoss(),
+    "BCELogits": nn.BCEWithLogitsLoss(reduction="sum"),
 }
 
 
@@ -39,16 +52,13 @@ def set_seed(seed):
 def configure_logger(path, config):
     ## CREATE LOGGING DIRECTORY
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-    model_method = config["MODEL_CONFIG"].get("pooling_method", "mlp")
-    experiment_name =  f"{model_method}_{timestamp}"
-    log_dir = os.path.join(path, experiment_name)
-    os.makedirs(log_dir)
+    exp_name = config['EXPERIMENT_NAME'] 
 
     ## SET SEED = CURRENT EXPERIMENT NUMBER
-    dirname = os.path.dirname(log_dir)
-    method = os.path.basename(log_dir).split("_")[0]
-    seed = len(glob.glob(os.path.join(dirname, method+"*")))
+    seed = len(glob.glob(os.path.join(path, exp_name+"*"))) + 1
     set_seed(seed)
+    log_dir = os.path.join(path, f"{config['EXPERIMENT_NAME']}_{seed}_{timestamp}")
+    os.makedirs(log_dir)
     config["LEARNING_PARAMETERS"]["SEED"] = seed
 
     ## SAVE EXPERIMENT CONFIG
@@ -57,49 +67,48 @@ def configure_logger(path, config):
 
     ## SAVE INITIAL LOG
     history_path = os.path.join(log_dir, f"history.csv") 
-    log(history_path, "Train Loss", "Val Loss", "Wall Time")
+    log(history_path, "Train Loss", "Val Loss", "Train Acc", "Val Acc", "Wall Time")
     return log_dir
 
 
-def log(path, train_loss, val_loss, wall_time):
+def log(path, train_loss, val_loss, train_acc, val_acc, wall_time):
     with open(path, "a") as file:
-        file.write(f"{train_loss},{val_loss},{wall_time}\n")    
+        file.write(f"{train_loss},{val_loss},{train_acc},{val_acc},{wall_time}\n")    
     return 
 
 
-def save_checkpoint(path, model, loss, tag=""):
+def save_checkpoint(path, model, value, ckpt_type="loss", tag=""):
     ## OVERWRITE PREVIOUS BEST CHECKPOINT 
-    previous_checkpoint = glob.glob(os.path.join(path, f"ckpt_{tag}*.pt"))
+    previous_checkpoint = glob.glob(os.path.join(path, f"{tag}ckpt_{ckpt_type}*.pt"))
     if len(previous_checkpoint) > 0:
         os.remove(previous_checkpoint[0])
     ## SAVE NEW BEST CHECKPOINT
-    filepath = os.path.join(path, f"{tag}ckpt_{loss:.4f}.pt")
+    filepath = os.path.join(path, f"{tag}ckpt_{ckpt_type}_{value:.4f}.pt")
     torch.save(model.state_dict(), filepath)        
     return
 
 
-def load_checkpoint(model, path):
+def load_checkpoint(model, path, ckpt_type="loss"):
     ## LOAD WEIGHTS
-    checkpoint = glob.glob(os.path.join(path, "ckpt_*.pt"))[-1]
+    checkpoint = glob.glob(os.path.join(path, f"ckpt_{ckpt_type}*.pt"))[-1]
     print(f"LOADING BEST WEIGHTS: {checkpoint}")
     device = next(model.parameters()).device
     state_dict = torch.load(checkpoint, weights_only=True, map_location=device)
-
-    # unwanted_prefix = '_orig_mod.'
-    # for key in list(state_dict.keys()):
-    #     if key.startswith(unwanted_prefix):
-    #         state_dict[key[len(unwanted_prefix):]] = state_dict.pop(key)
     model.load_state_dict(state_dict)
     model.eval()
     return model
     
 
-def load_dataset(experiment_path, cardinality, dim_vectors):
-    # Load data
-    method = os.path.basename(experiment_path)
+def load_dataset(experiment_path, config):
+    ## PARSE CONFIG
+    cardinality = config["LEARNING_PARAMETERS"]["INPUT_CARDINALITY"]
+    dim_vectors = config["LEARNING_PARAMETERS"]["INPUT_DIM"]
+    target = config["LEARNING_PARAMETERS"]["TARGET"]
+
+    ## LOAD DATA
     data_path = os.path.dirname(os.path.dirname(experiment_path)).replace("experiments", "data")
     X = np.load(os.path.join(data_path, f"X-N{cardinality}-d{dim_vectors}.npy"))   # SHAPE: [batch, num_vectors, dim_vectors]
-    y = np.load(os.path.join(data_path, f"y-N{cardinality}-d{dim_vectors}-{method}.npy"))  # SHAPE: [batch, aggregate_vector]
+    y = np.load(os.path.join(data_path, f"y-N{cardinality}-d{dim_vectors}-{target}.npy"))  # SHAPE: [batch, aggregate_vector]
 
     # Convert to torch tensors
     X = torch.tensor(X, dtype=torch.float32)
@@ -116,28 +125,23 @@ def kfold(
     ):
     ## PARSE CONFIG
     model_config = config["MODEL_CONFIG"]
-    cardinality = config["LEARNING_PARAMETERS"]["INPUT_CARDINALITY"]
-    dim_vectors = config["LEARNING_PARAMETERS"]["INPUT_DIM"]
-    test_ratio = config["LEARNING_PARAMETERS"]["TEST_RATIO"]
+    # test_ratio = config["LEARNING_PARAMETERS"]["TEST_RATIO"]
     bs = config["LEARNING_PARAMETERS"]["BATCH_SIZE"]
     k = config["LEARNING_PARAMETERS"]["NUM_FOLDS"]
     debug = config["LEARNING_PARAMETERS"]["DEBUG"]
     results = []
 
     ## BUILD DATASETS
-    dataset = load_dataset(experiment_path, cardinality, dim_vectors)
+    train_dataset, test_dataset = load_dataset(experiment_path, config)
 
     ## KFOLD VARIABLES
-    data_shape = dataset.tensors[0].shape
-    total_size = data_shape[0]
-    test_size = int(total_size * test_ratio)
-    train_size = total_size - test_size
+    # data_shape = dataset.tensors[0].shape
+    train_size = len(train_dataset)
     fold_size = train_size // k
-    test_idxs = list(range(train_size, total_size))
 
     ## INITIALIZE MODEL
     model_config.update({
-        "num_vectors": data_shape[1],
+        # "num_vectors": data_shape[1],
         "dim_ff": 4*model_config["dim_hidden"],
     })
     model_class = MODELS[model_config["model"]]
@@ -149,6 +153,10 @@ def kfold(
         log_dir = configure_logger(experiment_path, config)
         config["LEARNING_PARAMETERS"]["LOG_DIR"] = log_dir
         seed = config["LEARNING_PARAMETERS"]["SEED"]
+
+        if seed > i+1: 
+            shutil.rmtree(log_dir)
+            continue
 
         ## INITIALIZE NEW MODEL
         model = model_class(**model_config, seed=seed)
@@ -171,19 +179,20 @@ def kfold(
         train_idxs_right = list(range(vR, train_size)) if vR<train_size else []
         train_idxs = train_idxs_left + train_idxs_right
         val_idxs   = list(range(vL, vR))
-        train_loader = DataLoader(Subset(dataset, train_idxs), batch_size=bs, shuffle=True,  generator=torch.Generator().manual_seed(seed))
-        val_loader   = DataLoader(Subset(dataset, val_idxs),   batch_size=bs, shuffle=False, generator=torch.Generator().manual_seed(seed))
-        test_loader  = DataLoader(Subset(dataset, test_idxs),  batch_size=bs, shuffle=False, generator=torch.Generator().manual_seed(seed))
+        train_loader = DataLoader(Subset(train_dataset, train_idxs), batch_size=bs, shuffle=True,  generator=torch.Generator().manual_seed(seed)) #num_workers=os.cpu_count()//4
+        val_loader   = DataLoader(Subset(train_dataset, val_idxs),   batch_size=bs, shuffle=False, generator=torch.Generator().manual_seed(seed)) #num_workers=os.cpu_count()//4
+        test_loader  = DataLoader(test_dataset,  batch_size=bs, shuffle=False, generator=torch.Generator().manual_seed(seed)) #num_workers=os.cpu_count()//4
 
         print(f"\nTRAINING FOLD {i+1}/{k}")
-        test_loss = train(
+        test_loss, test_acc = train(
             train_loader, 
             val_loader, 
             test_loader,
             model,
             config,
         )
-        results.append(test_loss)
+        results.append(test_acc)
+        # results.append(test_loss)
     
     print(f"{k}-FOLD TEST RESULTS: {np.mean(results):.5f} ±{np.std(results):.5f}")
     return
@@ -205,104 +214,121 @@ def train(
     device = next(model.parameters()).device
 
     ## INITIALIZE LOSS AND OPTIMIZER
-    criterion = nn.MSELoss() 
+    criterion = LOSSES[config["LEARNING_PARAMETERS"]["LOSS"]]
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    n = len(train_loader.dataset)
+    m = len(val_loader.dataset)
 
     ## TRAINING LOOP
     best_loss = torch.inf
+    best_acc = 0.
     for epoch in range(epochs):
         start = time.time()
         model.train()
         train_loss = 0.0
+        train_acc = 0.0
         for batch_X, batch_y in tqdm(train_loader):
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
             
             ## INFERENCE
-            predictions = model(batch_X)
-            loss = criterion(predictions, batch_y)
+            output = model(batch_X)
+            loss = criterion(output, batch_y)
             
             ## BACKPROP
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()            
             train_loss += loss.item()
-        
+            
+            if isinstance(criterion, nn.BCEWithLogitsLoss):
+                preds = (torch.sigmoid(output) > 0.5).float()  
+                train_acc += (preds == batch_y).sum().item()                
+            elif isinstance(criterion, nn.CrossEntropyLoss):
+                preds = torch.argmax(output, dim=1)
+                train_acc += (preds == batch_y).sum().item()                
+
         ## VALIDATION
         model.eval()
         val_loss = 0.0
+        val_acc = 0.0
+        val_loader.dataset.dataset.train = False
         with torch.no_grad():
-            for batch_X, batch_y in val_loader:
+            for batch_X, batch_y in tqdm(val_loader):
                 batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-                predictions = model(batch_X)
-                loss = criterion(predictions, batch_y)
+                output = model(batch_X)
+                loss = criterion(output, batch_y)
                 val_loss += loss.item()
+                if isinstance(criterion, nn.BCEWithLogitsLoss):
+                    preds = (torch.sigmoid(output) > 0.5).float()  
+                    val_acc += (preds == batch_y).sum().item()    
+                elif isinstance(criterion, nn.CrossEntropyLoss):
+                    preds = torch.argmax(output, dim=1)
+                    val_acc += (preds == batch_y).sum().item()                
 
+        val_loader.dataset.dataset.train = True
         wall_time = time.time() - start
-        epoch_val_loss = val_loss / len(val_loader)
-        epoch_train_loss = train_loss / len(train_loader)
-        print(f"Exp {seed}. Epoch {epoch + 1}/{epochs} | Train Loss: {epoch_train_loss:.4f} | Val Loss: {epoch_val_loss:.4f}")
-        log(history_path, epoch_train_loss, epoch_val_loss, wall_time)
+        epoch_train_loss = train_loss / n
+        epoch_train_acc = train_acc / n
+        epoch_val_loss = val_loss / m
+        epoch_val_acc = val_acc / m
+        if isinstance(criterion, nn.CrossEntropyLoss) or isinstance(criterion, nn.BCEWithLogitsLoss):
+            print(f"Exp {seed}. Epoch {epoch + 1}/{epochs} | Train Loss: {epoch_train_loss:.4f} | Train Acc: {epoch_train_acc:.4f} | Val Loss: {epoch_val_loss:.4f} | Val Acc: {epoch_val_acc:.4f}")
+        else:    
+            print(f"Exp {seed}. Epoch {epoch + 1}/{epochs} | Train Loss: {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
+
+        log(history_path, epoch_train_loss, epoch_val_loss, epoch_train_acc, epoch_val_acc, wall_time)
         
         ## SAVE CHECKPOINT
         if epoch_val_loss < best_loss:
             best_loss = epoch_val_loss
-            save_checkpoint(log_dir, model, epoch_val_loss)
+            save_checkpoint(log_dir, model, value=epoch_val_loss, ckpt_type="loss")
+        if epoch_val_acc > best_acc:
+            best_loss = epoch_val_loss
+            save_checkpoint(log_dir, model, value=epoch_val_acc, ckpt_type="acc")
 
     ## LOAD CHECKPOINT WITH BEST VALIDATION LOSS
-    model = load_checkpoint(model, log_dir)
+    model = load_checkpoint(model, log_dir, ckpt_type="acc")
 
     ## TESTING
     model.eval()
     test_loss = 0.0
+    test_acc = 0.0
+    # test_loader.dataset.dataset.train = False
     with torch.no_grad():
         for batch_X, batch_y in test_loader:
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-            predictions = model(batch_X)
-            loss = criterion(predictions, batch_y)
+            output = model(batch_X)
+            loss = criterion(output, batch_y)
             test_loss += loss.item()
+        
+            if isinstance(criterion, nn.BCEWithLogitsLoss):
+                preds = (torch.sigmoid(output) > 0.5).float()  
+                test_acc += (preds == batch_y).sum().item()    
+            elif isinstance(criterion, nn.CrossEntropyLoss):
+                preds = torch.argmax(output, dim=1)
+                test_acc += (preds == batch_y).sum().item()                
+
 
     ## SAVE THE FINAL MODEL
-    test_loss = test_loss / len(test_loader)
-    log(history_path, "TEST LOSS", test_loss, 0.0)
-    print(f"\nEXPERIMENT COMPLETE | Best Val Loss: {best_loss:.4f} | Test Loss: {test_loss:.4f}\n")
-    save_checkpoint(log_dir, model, test_loss, tag="final_")
-    return test_loss
+    test_loss = test_loss / len(test_loader.dataset)
+    test_acc = test_acc / len(test_loader.dataset)
+    log(history_path, "TEST LOSS", test_loss, "TEST ACC", test_acc, 0.0)
+    if isinstance(criterion, nn.CrossEntropyLoss) or isinstance(criterion, nn.BCEWithLogitsLoss):
+        print(f"\nEXPERIMENT COMPLETE | Best Val Loss: {best_loss:.4f} | Test Loss: {test_loss:.4f} | Test Acc: {test_acc:.4f}\n")
+        save_checkpoint(log_dir, model, value=test_acc, ckpt_type="acc", tag="final_")
+    else:    
+        print(f"\nEXPERIMENT COMPLETE | Best Val Loss: {best_loss:.4f} | Test Loss: {test_loss:.4f}\n")
+        save_checkpoint(log_dir, model, value=test_loss, ckpt_type="loss", tag="final_")
 
+    return test_loss, test_acc
 
-# def compute_baseline_scores(test_loader, device, criterion):
-#     ## NAIVE CENTROID GUESS
-#     test_loss = 0.0
-#     with torch.no_grad():
-#         for batch_X, batch_y in test_loader:
-#             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-#             predictions = batch_X.mean(axis=1)
-#             loss = criterion(predictions, batch_y)
-#             test_loss += loss.item()
-#
-#     ## SAVE THE FINAL MODEL
-#     test_loss = test_loss / len(test_loader)
-#     print(test_loss)
-#
-#     ## NAIVE VECTOR OF INTEREST GUESS
-#     test_loss = 0.0
-#     with torch.no_grad():
-#         for batch_X, batch_y in test_loader:
-#             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
-#             predictions = batch_X[:,0]
-#             loss = criterion(predictions, batch_y)
-#             test_loss += loss.item()
-#
-#     ## SAVE THE FINAL MODEL
-#     test_loss = test_loss / len(test_loader)
-#     print(test_loss)
-#     return
 
 
 if __name__ == "__main__":
 
     # PARSE ARGUMENTS
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-p', '--experiment_path', default="./experiments/noise-robustness", help='Relative path to the experiment config.')
+    parser.add_argument('-p', '--experiment_path', default="./experiments/gem-baseline/mix-gem", help='Relative path to the experiment config.')
     args = parser.parse_args()
 
     ## BUILD PATHS FROM ARGPARSE INPUT
@@ -321,9 +347,8 @@ if __name__ == "__main__":
 
     ## K-FOLD CROSS VALIDATION
     for path,config in list(zip(paths, configs)):
-        method = config["MODEL_CONFIG"].get("pooling_method", "mlp") #.upper()
         target = os.path.basename(path).upper()
         path = os.path.join(base, path)
         for i in range(config["LEARNING_PARAMETERS"]["NUM_EXPERIMENTS"]):
-            print(f"\nSTARTING EXPERIMENT FOR {method} POOLING APPROXIMATION OF {target}:  {i+1}/{config['LEARNING_PARAMETERS']['NUM_EXPERIMENTS']}")
+            print(f"\nSTARTING EXPERIMENT FOR GEM APPROXIMATION OF {config['EXPERIMENT_NAME']}:  {i+1}/{config['LEARNING_PARAMETERS']['NUM_EXPERIMENTS']}")
             kfold(path, config, load_dataset)
