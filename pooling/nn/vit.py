@@ -5,12 +5,12 @@
 import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from einops import repeat
 from einops.layers.torch import Rearrange
 
 from pooling.nn.transformer import Transformer
 from pooling.nn.initialize import transformer_init
+from pooling.models.attenuator import Attenuator
 
 
 def pair(t):
@@ -42,6 +42,8 @@ class ViT(nn.Module):
 
         self.size_img = size_img
         self.size_patch = size_patch
+        self.dim_patch = size_patch
+        self.dim_hidden = dim_hidden
         self.num_classes = num_classes
 
         # assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
@@ -53,11 +55,16 @@ class ViT(nn.Module):
             nn.LayerNorm(dim_hidden)
         )
 
-        self.pos_embd  = nn.Parameter(torch.randn(1, num_patches + 1, dim_hidden))
-        self.cls_token = nn.Parameter(torch.randn(1, 1, dim_hidden))
+        # self.pos_embd  = nn.Parameter(torch.randn(1, num_patches + 1, dim_hidden))
         self.dropout = nn.Dropout(dropout_embd)
-        self.transformer = Transformer(dim_hidden, num_layers=num_layers, **kwargs)
-        self.classifier = nn.Linear(dim_hidden, num_classes)
+        self.pos_embd  = nn.Parameter(torch.randn(1, num_patches, dim_hidden))
+        # self.cls_token = nn.Parameter(torch.randn(1, 1, dim_hidden))
+        # self.transformer = Transformer(dim_hidden, num_layers=num_layers, **kwargs)
+        self.attenuator = Attenuator(dim_hidden, num_layers=num_layers, **kwargs)
+        self.classifier = nn.Sequential(
+            nn.LayerNorm(dim_hidden),
+            nn.Linear(dim_hidden, num_classes),
+        ) 
         
         ## INITIALIZE WEIGHTS
         if seed:
@@ -70,8 +77,8 @@ class ViT(nn.Module):
     def img_to_tokens(self, img):
         x = self.to_patch_embedding(img)
 
-        cls_tokens = repeat(self.cls_token, '1 n d -> b n d', b = x.shape[0])
-        x = torch.cat((cls_tokens, x), dim = 1)
+        # cls_tokens = repeat(self.cls_token, '1 n d -> b n d', b = x.shape[0])
+        # x = torch.cat((cls_tokens, x), dim = 1)
 
         x += self.pos_embd
         x = self.dropout(x)
@@ -80,14 +87,10 @@ class ViT(nn.Module):
     def forward(self, img):
         x = self.img_to_tokens(img)        
 
-        x = self.transformer(x)
+        x = self.attenuator(x)
 
-        cls_tokens = x[:, 0]
-
-        logits = self.classifier(cls_tokens)
-        if self.num_classes == 1: logits = logits.squeeze(-1)
-        return logits
-
+        return self.classifier(x)
+    
 
 if __name__ == "__main__":
 

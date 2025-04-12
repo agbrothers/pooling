@@ -12,6 +12,7 @@ from pooling.nn.pool import (
     GemAdaPool, 
     ClsToken,
     CtrPool,
+    FocalPool,
 )
 
 
@@ -81,9 +82,9 @@ class Attenuator(nn.Module):
             pooling_layer = ClsToken(dim_hidden, num_heads, dropout, k=1, **kwargs)
             self._query = True
         elif pooling_method == "CtrPool":
-            pooling_layer = CtrPool(dim_hidden, num_heads, dropout, k=1, **kwargs)
-            self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
-            self._query = True
+            pooling_layer = CtrPool(dim_hidden, num_heads, query_idx=query_idx, **kwargs)
+        elif pooling_method == "FocalPool":
+            pooling_layer = FocalPool(dim_hidden, num_heads, query_idx=query_idx, **kwargs)
         else:
             raise ValueError("Invalid `pooling_method` argument for AttenuationNetwork.")
 
