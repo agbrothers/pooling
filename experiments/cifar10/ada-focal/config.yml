@@ -1,0 +1,32 @@
+EXPERIMENT_NAME: 4-CIFAR-ADA-FOCAL
+
+LEARNING_PARAMETERS: 
+  NUM_EXPERIMENTS: 1
+  LEARNING_RATE: 1.0e-4 
+  BATCH_SIZE: 512 
+  EPOCHS: 150
+  LOSS: CrossEntropy
+  NUM_FOLDS: 5
+  DEBUG: False
+
+MODEL_CONFIG:
+  model: ViT
+  num_classes: 100
+  size_img: 32
+  size_patch: 4
+  num_layers: 6 
+  num_heads: 8 
+  dim_hidden: 512
+  query_idx: 
+    - 27
+    - 28
+    - 35
+    - 36
+  dropout_w: 0.1 
+  dropout_e: 0.1 
+  dropout_ff: 0.1 
+  dropout_embd: 0.1
+  bias_attn: False 
+  bias_ff: True 
+  flash: True 
+  pooling_method: FocalPool
