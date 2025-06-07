@@ -178,3 +178,4 @@ cython_debug/
 *.jpg
 *.png
 experiments/*
+data/
