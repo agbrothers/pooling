@@ -59,7 +59,7 @@ class Attenuator(nn.Module):
         self._query = False
         self._recurrent = False
 
-        ## INITIALIE ENCODER
+        ## INITIALIZE ENCODER
         self.transformer = Transformer(
             dim_hidden,
             dim_ff,
@@ -121,12 +121,9 @@ class Attenuator(nn.Module):
         if self.proj_in:
             x = self.proj_in(x)
         
-        ## SOURCE QUERY VECTOR
+        ## SOURCE CLS TOKEN QUERY
         if self._query:
             x = torch.cat((self.pool.get_query(x), x), dim=1)
-            ## TODO: IMPLEMENT MASK EXTENSION
-            # if mask is not None:
-            #     mask = torch.cat((torch.ones(mask.shape[1]), mask), dim=1)
         
         ## ADD POSITIONAL EMBEDDINGS
         if self.query_emb:

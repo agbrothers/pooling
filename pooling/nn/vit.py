@@ -1,15 +1,15 @@
-""" DERIVED FROM Phil Wang's ViT IMPLEMENTATION
-    https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/vit.py 
-"""
-
 import math
 import torch
 import torch.nn as nn
 from einops import repeat
 from einops.layers.torch import Rearrange
 
-# from pooling.nn.transformer import Transformer
 from pooling.models.attenuator import Attenuator
+
+""" NOTE:
+    DERIVED FROM Phil Wang's ViT IMPLEMENTATION
+    https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/vit.py 
+"""
 
 
 def pair(t):
@@ -45,8 +45,6 @@ class ViT(nn.Module):
         self.dim_hidden = dim_hidden
         self.num_classes = num_classes
 
-        # assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
-
         self.to_patch_embedding = nn.Sequential(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             nn.LayerNorm(dim_patch),
@@ -73,22 +71,14 @@ class ViT(nn.Module):
     
     def img_to_tokens(self, img):
         x = self.to_patch_embedding(img)
-
-        # cls_tokens = repeat(self.cls_token, '1 n d -> b n d', b = x.shape[0])
-        # x = torch.cat((cls_tokens, x), dim = 1)
-
-        x += self.pos_embd
-        x = self.dropout(x)
-        return x
+        x = x + self.pos_embd
+        return self.dropout(x)
 
     def forward(self, img):
         x = self.img_to_tokens(img)        
-
         x = self.attenuator(x)
-
         return self.classifier(x)
     
-
     def initialize(self, module) -> None:
         """ 
         INITIALIZATION SCHEME AS IN 

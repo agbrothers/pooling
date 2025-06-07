@@ -56,8 +56,7 @@ class Encoder(nn.Module):
     def forward(self, x, mask=None) -> Tensor: 
         for layer in self.layers: 
             x = layer(x, mask=mask)
-        # return self.norm(x)
-        return x
+        return self.norm(x)
 
 
 class Transformer(nn.Module):
@@ -90,7 +89,7 @@ class Transformer(nn.Module):
         self._bias_attn = bias_attn,
         self._bias_ff = bias_ff,
 
-        ## INITIALIE ENCODER
+        ## INITIALIZE ENCODER
         layer = TransformerLayer(dim_hidden, dim_ff, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, bias_ff, flash)
         self.encoder = Encoder(layer, num_layers)
 
@@ -101,6 +100,11 @@ class Transformer(nn.Module):
                 if name.endswith("out.weight"):
                     torch.nn.init.normal_(param, mean=0.0, std=0.02/math.sqrt(2 * num_layers))
         return
+
+
+    def forward(self, x, mask=None) -> Tensor:
+        return self.encoder(x, mask=mask)
+
 
     def initialize(self, module) -> None:
         """ 
@@ -122,6 +126,3 @@ class Transformer(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
         return
-
-    def forward(self, x, mask=None) -> Tensor:
-        return self.encoder(x, mask=mask)
