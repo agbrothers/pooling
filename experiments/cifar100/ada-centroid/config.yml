@@ -22,7 +22,6 @@ MODEL_CONFIG:
   num_layers: 6 
   num_heads: 8 
   dim_hidden: 512
-  query_idx: 0
   dropout_w: 0.1 
   dropout_e: 0.1 
   dropout_ff: 0.1 
@@ -30,4 +29,5 @@ MODEL_CONFIG:
   bias_attn: False 
   bias_ff: True 
   flash: True 
-  pooling_method: CtrPool
+  pooling_method: AdaPool
+  query_idx: 
