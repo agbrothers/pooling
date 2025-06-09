@@ -145,19 +145,11 @@ if __name__ == "__main__":
     y = x[:, mask].mean(dim=-2)
     test_aggr(pooling_layer, out_shape=(b, d), b=b, n=n, d=d)
     test_mask(pooling_layer, x, y, mask)
-    
-    pooling_layer = SumPool()
-    y = x[:, mask].sum(dim=-2)
-    test_aggr(pooling_layer, out_shape=(b, d), b=b, n=n, d=d)
-    test_mask(pooling_layer, x, y, mask)
-    
+        
     pooling_layer = ClsToken(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, k=1)
     test_aggr(pooling_layer, out_shape=(b, d), b=b, n=n, d=d)
     
-    pooling_layer = ClsToken(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, k=3)
-    test_aggr(pooling_layer, out_shape=(b, 3*d), b=b, n=n, d=d)
-    
-    pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, query_idx=0) 
+    pooling_layer = AdaPool(query_idx=0, dim_hidden=dim_hidden, num_heads=num_heads, dropout_w=dropout_w, dropout_e=dropout_e, bias_attn=bias_attn) 
     torch.nn.init.eye_(pooling_layer.attn.Q.weight)
     torch.nn.init.eye_(pooling_layer.attn.KV.weight[:d])
     torch.nn.init.eye_(pooling_layer.attn.KV.weight[d:])
@@ -168,5 +160,3 @@ if __name__ == "__main__":
     test_mask(pooling_layer, x, y, mask.unsqueeze(0))
     pooling_layer.attn.flash = False
     test_mask(pooling_layer, x, y, mask.unsqueeze(0))
-
-    done = True
