@@ -3,19 +3,18 @@ import torch.nn as nn
 from torch import Tensor, BoolTensor
 
 from pooling.nn.attention import MultiHeadAttention
-from pooling.nn.transformer import FeedForward
 
 
 class Pool(nn.Module):
     """
-    Pool Layer Base Class
+    DESC: 
+     Pool Layer Base Class
     
     """
-
     def __init__(self, dim=-2, **kwargs):
         super().__init__()
         ##  DEFAULT SHAPE ASSUMPTION: 
-        ## [batch, entities, hidden dim]
+        ##  [batch, tokens, dim_hidden]
         self.dim = dim
 
     def forward(self, x:Tensor, mask:BoolTensor=None):
@@ -24,10 +23,10 @@ class Pool(nn.Module):
 
 class MaxPool(Pool):
     """
-    Take the max value per feature over the embeddings. 
+    DESC: 
+     Take the max value per feature over the embeddings. 
     
     """
-        
     def forward(self, x:Tensor, mask:BoolTensor=None):
         if mask is not None:
             x = x[:, mask]        
@@ -37,105 +36,72 @@ class MaxPool(Pool):
 class AvgPool(Pool):
     """
     DESC: 
-    Take the average value per feature over the embeddings. 
+     Take the average value per feature over the embeddings. 
     
     """
-            
     def forward(self, x:Tensor, mask:BoolTensor=None):
         if mask is not None:
             x = x[:, mask]        
         return x.mean(dim=self.dim)
 
 
-class SumPool(Pool):
+class ClsToken(Pool): 
     """
     DESC: 
-    Take the sum of values per feature over the embeddings. 
+     Learn a weighted embedding to be appended to the transformer input,
+     then pluck the contextualized embedding from the transformer output.
     
     """
-    def __init__(self, dim_hidden=None, norm=False, **kwargs):
+    def __init__(self, dim_hidden, num_heads, dropout_w=0, dropout_e=0, bias=False, cls_token_idx=0, k=1, **kwargs):
         super().__init__(dim=-2)
-        self.norm = nn.LayerNorm(dim_hidden) if norm else None
+        self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias)
+        self.cls_token = nn.Parameter(torch.rand(1, k, dim_hidden))
+        self.cls_token_idx = cls_token_idx
 
-    def forward(self, x:Tensor, mask:BoolTensor=None):
-        if mask is not None:
-            x = x[:, mask]
-        pool = x.sum(dim=self.dim)
-        if self.norm: pool = self.norm(pool)
-        return pool
+    def forward(self, x:Tensor, mask:BoolTensor=None):  
+        return x[:, self.cls_token_idx]
+
+    def get_cls_token(self, x, **kwargs):
+        bs = x.size(0)
+        return self.cls_token.expand((bs,-1,-1))
 
 
 class AdaPool(Pool): 
     """
     DESC: 
-    Compute a weighted average per head over the input vectors using attention. 
-    By default, one of the input vectors is chosen is used as a query to compute
-    the relational weights via dot product with respect to the other input vectos. 
+     Compute a weighted average per head over the input vectors using attention. 
+     By default, one of the input vectors is chosen is used as a query to compute
+     the relational weights via dot product with respect to the other input vectos. 
     
     """
-
-    def __init__(self, dim_hidden, num_heads, dropout_w=0, dropout_e=0, dropout_ff=0, bias=False, flash=True, query_idx=0, **kwargs):
+    def __init__(self, query_idx=None, **kwargs):
         super().__init__(dim=-2)
-        self.dim_hidden = dim_hidden
-        self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias, flash)
         self.query_idx = query_idx
+        self.attn = MultiHeadAttention(**kwargs)
 
     def forward(self, x:Tensor, mask:BoolTensor=None):  
-        ## AGGREGATE
-        query = x[:, self.query_idx] 
-        residual = self.attn(query, x, mask)
-        return query + residual
+        ## GET QUERY AS A FUNCTION OF THE INPUT SET
+        query = self.get_query(x)
+        pool = self.attn(query=query, context=x, mask=mask)
+
+        ## IF INDIVIDUAL QUERY, EXTEND SKIP CONNECTION
+        if isinstance(self.query_idx, int):
+            pool = pool + query
+        return pool
     
+    def get_query(self, x:Tensor) -> Tensor:
+        ## DEFAULT MEAN QUERY
+        if self.query_idx is None:
+            return torch.mean(x, dim=self.dim, keepdim=False)
+        ## INDIVIDUAL QUERY
+        elif isinstance(self.query_idx, int):
+            return x[:, self.query_idx] 
+        ## AGGREGATE QUERY
+        elif hasattr(self.query_idx, "__len__"):
+            return torch.mean(x[:, self.query_idx], dim=self.dim, keepdim=False)
+        else:
+            raise NotImplementedError()
 
-class ClsToken(Pool): 
-    """
-    DESC: 
-    Learn a weighted embedding to be appended to the transformer input,
-    then pluck the contextualized embedding from the transformer output.
-    
-    """
-
-    def __init__(self, dim_hidden, num_heads, dropout_w=0, dropout_e=0, bias=False, flash=True, query_idx=0, k=1, **kwargs):
-        super().__init__(dim=-2)
-        self.attn = MultiHeadAttention(dim_hidden, num_heads, dropout_w, dropout_e, bias)
-        self.cls_token = nn.Parameter(torch.rand(1, k, dim_hidden))
-        self.cls_token_idx = query_idx
-        self.k = k
-        self.expand = None
-
-    def forward(self, x:Tensor, mask:BoolTensor=None):  
-        return x[:, self.cls_token_idx]
-
-    def get_query(self, x, **kwargs):
-        bs = x.size(0)
-        return self.cls_token.expand((bs,-1,-1))
-
-
-class CtrPool(AdaPool): 
-    """
-    DESC: 
-    AdaPool using a centroid query
-    
-    """
-    def forward(self, x:Tensor, mask:BoolTensor=None):  
-        ## AGGREGATE
-        query = torch.mean(x, dim=1, keepdim=False)
-        residual = self.attn(query, x, mask)
-        return residual    
-
-
-class FocalPool(AdaPool): 
-    """
-    DESC: 
-    AdaPool using a centroid query
-    
-    """
-
-    def forward(self, x:Tensor, mask:BoolTensor=None):  
-        ## AGGREGATE
-        query = torch.mean(x[:, self.query_idx], dim=1, keepdim=False)
-        residual = self.attn(query, x, mask)
-        return residual 
 
 
 if __name__ == "__main__":

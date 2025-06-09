@@ -2,39 +2,27 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+import pooling.nn.pooling as pooling
 from pooling.nn.transformer import Transformer
-from pooling.nn.pooling import (
-    MaxPool, 
-    AvgPool, 
-    SumPool, 
-    AdaPool, 
-    ClsToken,
-    CtrPool,
-    FocalPool,
-)
 
 
 class Attenuator(nn.Module):
 
+    METHODS = {
+        "MaxPool": pooling.MaxPool,
+        "AvgPool": pooling.AvgPool,
+        "AdaPool": pooling.AdaPool,
+        "ClsToken": pooling.ClsToken,
+    }
+
     def __init__(
             self, 
             dim_hidden,
-            dim_ff,
-            num_layers,
-            num_heads,
-            dropout_w,
-            dropout_e,
-            dropout_ff,
-            bias_attn,
-            bias_ff,
             dim_input=None,
             dim_output=None,
-            flash=True,
             num_emb=2,            
             pos_emb=False,
-            pooling_norm=False,
             pooling_method="AdaPool",
-            query_idx=0,
             seed=None,
             **kwargs,
         ) -> None: 
@@ -42,35 +30,14 @@ class Attenuator(nn.Module):
 
         ## SET MODEL PROPERTIES
         self._dim_hidden = dim_hidden
-        self._dim_ff = dim_ff
         self._dim_input = dim_input
         self._dim_output = dim_output
-        self._num_layers = num_layers
-        self._num_heads = num_heads
-        self._dropout_w = dropout_w,
-        self._dropout_e = dropout_e,
-        self._dropout_ff = dropout_ff,
-        self._bias_attn = bias_attn,
-        self._bias_ff = bias_ff,
-        self._pooling_norm = pooling_norm
         self._pooling_method = pooling_method
-        self._query_idx=query_idx
-        self._flash = flash
-        self._query = False
         self._recurrent = False
 
         ## INITIALIZE ENCODER
         self.transformer = Transformer(
             dim_hidden,
-            dim_ff,
-            num_layers,
-            num_heads,
-            dropout_w,
-            dropout_e,
-            dropout_ff,
-            bias_attn,
-            bias_ff,
-            flash,
             **kwargs,
         )
         self.proj_in = None
@@ -86,29 +53,7 @@ class Attenuator(nn.Module):
         if pos_emb:
             self.query_emb = nn.Embedding(num_embeddings=num_emb, embedding_dim=dim_hidden)
 
-        ## INITIALIZE POOLING LAYER
-        if pooling_method == "MaxPool":
-            pooling_layer = MaxPool()
-        elif pooling_method == "AvgPool":
-            pooling_layer = AvgPool()
-        elif pooling_method == "SumPool":
-            pooling_layer = SumPool(dim_hidden, pooling_norm)
-        elif pooling_method == "AdaPool":
-            pooling_layer = AdaPool(dim_hidden, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, flash, query_idx=query_idx) 
-            # self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
-        elif pooling_method == "ClsToken":
-            pooling_layer = ClsToken(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, k=1)
-            self._query = True
-        elif pooling_method == "CtrPool":
-            pooling_layer = CtrPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash)
-            # self.query_emb = nn.Embedding(num_embeddings=2, embedding_dim=dim_hidden)
-            # self._query = True
-        elif pooling_method == "FocalPool":
-            pooling_layer = FocalPool(dim_hidden, num_heads, dropout_w, dropout_e, bias_attn, flash, query_idx=query_idx)
-        else:
-            raise ValueError("Invalid `pooling_method` argument for AttenuationNetwork.")
-
-        self.pool = pooling_layer
+        self.pool = self.METHODS[pooling_method](dim_hidden=dim_hidden, **kwargs)
 
         if seed:
             torch.manual_seed(seed)
@@ -117,15 +62,15 @@ class Attenuator(nn.Module):
 
 
     def forward(self, x, mask=None) -> Tensor:
-        ## PROJECT INPUT TO HIDDEN DIMENSION
+        ## [Optional] PROJECT INPUT TO HIDDEN DIMENSION
         if self.proj_in:
             x = self.proj_in(x)
         
-        ## SOURCE CLS TOKEN QUERY
-        if self._query:
-            x = torch.cat((self.pool.get_query(x), x), dim=1)
+        ## [Optional] SOURCE CLS TOKEN
+        if hasattr(self.pool, "cls_token"):
+            x = torch.cat((self.pool.get_cls_token(x), x), dim=1)
         
-        ## ADD POSITIONAL EMBEDDINGS
+        ## [Optional] ADD QUERY EMBEDDING
         if self.query_emb:
             idx = torch.ones(x.shape[:-1], dtype=torch.long, device=x.device)
             idx[:, 0] = 0
@@ -137,7 +82,7 @@ class Attenuator(nn.Module):
         ## APPLY POOLING
         pool = self.pool(x, mask)
 
-        ## PROJECT HIDDEN TO OUTPUT DIMENSION
+        ## [Optional] PROJECT HIDDEN TO OUTPUT DIMENSION
         if self.proj_out:
             pool = self.proj_out(pool)
         return pool
@@ -164,6 +109,8 @@ class Attenuator(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
         return
 
+    ## HELPER FUNCTIONS FOR RLLIB?
+    ##
 
     def get_query(self):
         return self.pool.get_query()
