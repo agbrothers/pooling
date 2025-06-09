@@ -47,16 +47,19 @@ class TransformerLayer(nn.Module):
 
 class Encoder(nn.Module):
 
-    def __init__(self, encoder_layer, num_layers):
+    def __init__(self, encoder_layer, num_layers, norm_output=False):
         super().__init__()
         self.layers = nn.ModuleList([deepcopy(encoder_layer) for _ in range(num_layers)])
-        self.norm = nn.LayerNorm(encoder_layer._dim_hidden)
+        self.norm = nn.LayerNorm(encoder_layer._dim_hidden) if norm_output else None
         self._num_layers = num_layers
 
     def forward(self, x, mask=None) -> Tensor: 
         for layer in self.layers: 
             x = layer(x, mask=mask)
-        return self.norm(x)
+        if self.norm is not None:  
+            ## NOTE: Norm hurts regression performance for all methods            
+            x = self.norm(x)
+        return x
 
 
 class Transformer(nn.Module):
@@ -73,6 +76,7 @@ class Transformer(nn.Module):
             bias_attn,
             bias_ff,
             flash,
+            norm_output=False,
             seed=None,
             **kwargs,
         ) -> None: 
@@ -80,18 +84,11 @@ class Transformer(nn.Module):
 
         ## SET MODEL PROPERTIES
         self._dim_hidden = dim_hidden
-        self._dim_ff = dim_ff
         self._num_layers = num_layers
-        self._num_heads = num_heads
-        self._dropout_w = dropout_w,
-        self._dropout_e = dropout_e,
-        self._dropout_ff = dropout_ff,
-        self._bias_attn = bias_attn,
-        self._bias_ff = bias_ff,
 
         ## INITIALIZE ENCODER
-        layer = TransformerLayer(dim_hidden, dim_ff, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, bias_ff, flash)
-        self.encoder = Encoder(layer, num_layers)
+        layer = TransformerLayer(dim_hidden, dim_ff, num_heads, dropout_w, dropout_e, dropout_ff, bias_attn, bias_ff, flash, **kwargs)
+        self.encoder = Encoder(layer, num_layers, norm_output)
 
         ## INITIALIZE WEIGHTS
         if seed:

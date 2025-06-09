@@ -29,5 +29,6 @@ MODEL_CONFIG:
   bias_attn: False 
   bias_ff: True 
   flash: True 
+  norm_output: True  
   pooling_method: AdaPool
   query_idx: 0
