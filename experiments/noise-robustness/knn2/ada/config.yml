@@ -1,12 +1,16 @@
-EXPERIMENT_NAME: KNN-32
+EXPERIMENT_NAME: KNN-2-ADA
+
+DATASET_NAME: KNN_CENTROID
 
 LEARNING_PARAMETERS: 
   NUM_EXPERIMENTS: 1
   LEARNING_RATE: 5.0e-4 
   BATCH_SIZE: 750 
   EPOCHS: 100
-  NUM_FOLDS: 5
+  LOSS: MSE  
   TEST_RATIO: 0.1
+  NUM_FOLDS: 5
+  NUM_NEIGHBORS: 2
   INPUT_CARDINALITY: 128
   INPUT_DIM: 16
   DEBUG: False
@@ -22,9 +26,6 @@ MODEL_CONFIG:
   bias_attn: False 
   bias_ff: True 
   pos_emb: True
-  num_emb: 2
   flash: True 
-  pooling_method: AvgPool 
-  # pooling_method: MaxPool
-  # pooling_method: AdaPool 
-  # pooling_method: ClsToken 
+  pooling_method: AdaPool 
+  query_idx: 0
