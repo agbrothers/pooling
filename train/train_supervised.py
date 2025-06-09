@@ -76,8 +76,8 @@ def train(
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(0.9, 0.999))
     if use_scheduler:
         scheduler = get_cosine_schedule_with_warmup(optimizer, scheduler_warmup_steps, epochs)
-    n = len(train_loader.dataset)
-    m = len(val_loader.dataset)
+    n = len(train_loader)
+    m = len(val_loader)
 
     ## TRAINING LOOP
     best_loss = torch.inf
@@ -137,7 +137,7 @@ def train(
             best_loss = epoch_val_loss
             save_checkpoint(log_dir, model, value=epoch_val_loss, ckpt_type="loss")
         if epoch_val_acc > best_acc:
-            best_loss = epoch_val_loss
+            best_acc = epoch_val_acc
             save_checkpoint(log_dir, model, value=epoch_val_acc, ckpt_type="acc")
 
     ## TESTING
@@ -162,8 +162,8 @@ def train(
             test_acc += get_acc(criterion, output, batch_y)           
 
     ## SAVE THE FINAL MODEL
-    test_loss = test_loss / len(test_loader.dataset)
-    test_acc = test_acc / len(test_loader.dataset)
+    test_loss = test_loss / len(test_loader)
+    test_acc = test_acc / len(test_loader)
     log(history_path, "TEST LOSS", test_loss, "TEST ACC", test_acc, 0.0)
     if isinstance(criterion, nn.MSELoss): 
         print(f"\nEXPERIMENT COMPLETE | Best Val Loss: {best_loss:.4f} | Test Loss: {test_loss:.4f}\n")
@@ -257,15 +257,14 @@ def kfold(
 def run(train_func) -> None:
     # PARSE ARGUMENTS
     parser = argparse.ArgumentParser(description=None)
-    # parser.add_argument('-p', '--experiment_path', default="./experiments/imagenet/ada-focal", help='Relative path to the experiment config.')
-    parser.add_argument('-p', '--experiment_path', default="./experiments/cifar10/ada-corner", help='Relative path to the experiment config.')
-    # parser.add_argument('-p', '--experiment_path', default="./experiments/noise-robustness/knn2", help='Relative path to the experiment config.')
+    parser.add_argument('-p', '--experiment_path', default="./experiments/noise-robustness/knn1/ada", help='Relative path to the experiment config.')
     args = parser.parse_args()
 
     ## BUILD PATHS FROM ARGPARSE INPUT
     configs = []
     base = __file__.split("train")[0]
     abs_path = os.path.join(base, args.experiment_path)
+    assert os.path.exists(abs_path), f"Experiment directory does not exist: {abs_path}"
     
     ## CHECK IF THIS PATH LEADS TO A SINGLE EXPERIMENT OR A SET
     is_single_exp = os.path.exists(os.path.join(abs_path, "config.yml"))
@@ -281,7 +280,7 @@ def run(train_func) -> None:
         path = os.path.join(base, path)
         loader = LOADERS[config["DATASET_NAME"]]
         for i in range(config["LEARNING_PARAMETERS"]["NUM_EXPERIMENTS"]):
-            print(f"\nSTARTING EXPERIMENT {config['EXPERIMENT_NAME']}:  {i+1}/{config['LEARNING_PARAMETERS']['NUM_EXPERIMENTS']}")
+            print(f"\nSTARTING {config['DATASET_NAME']} EXPERIMENT {config['EXPERIMENT_NAME']}:  {i+1}/{config['LEARNING_PARAMETERS']['NUM_EXPERIMENTS']}")
             train_func(path, config, loader)
     return
 
