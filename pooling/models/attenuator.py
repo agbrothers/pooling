@@ -2,17 +2,17 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-import pooling.nn.pooling as pooling
+import pooling.nn.pool as pool
 from pooling.nn.transformer import Transformer
 
 
 class Attenuator(nn.Module):
 
     METHODS = {
-        "MaxPool": pooling.MaxPool,
-        "AvgPool": pooling.AvgPool,
-        "AdaPool": pooling.AdaPool,
-        "ClsToken": pooling.ClsToken,
+        "MaxPool": pool.MaxPool,
+        "AvgPool": pool.AvgPool,
+        "AdaPool": pool.AdaPool,
+        "ClsToken": pool.ClsToken,
     }
 
     def __init__(
@@ -109,27 +109,6 @@ class Attenuator(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
         return
 
-    ## HELPER FUNCTIONS FOR RLLIB?
-    ##
-
-    def get_query(self):
-        return self.pool.get_query()
-    
-    def set_recurrent_state(self, recurrent_state):
-        ## OVERRIDE THE RECURRENT STATE (RNNs ONLY)
-        self.pool.set_query(recurrent_state)
-
-    def get_recurrent_state(self):
-        ## RETURN THE RECURRENT STATE (RNNs ONLY)
-        return self.pool.get_query()
-
-    def get_initial_recurrent_state(self):
-        ## RETURN AN INITIAL RECURRENT STATE (RNNs ONLY)
-        return self.pool.get_initial_query()
-
-    def get_recurrent_state_shape(self):
-        ## RETURN THE RECURRENT STATE SHAPE (RNNs ONLY)
-        return self.get_initial_recurrent_state().shape
     
 
 if __name__ == "__main__":

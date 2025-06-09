@@ -201,7 +201,6 @@ class TokenActorCritic(nn.Module):
 
         ## INPUT PROJECTION ACTIVATION FUNCTION
         self.activation = F.gelu
-        # self.activation = nn.GELU() 
 
         ## PARSE CONFIG
         self._dim_token = dim_token
