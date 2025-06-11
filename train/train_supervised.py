@@ -65,7 +65,7 @@ def train(
     epochs = config["LEARNING_PARAMETERS"]["EPOCHS"]
     log_dir = config["LEARNING_PARAMETERS"]["LOG_DIR"]
     grad_clip = config["LEARNING_PARAMETERS"].get("GRAD_CLIP")
-    weight_decay = config["LEARNING_PARAMETERS"].get("WEIGHT_DECAY", 1e-6)
+    weight_decay = config["LEARNING_PARAMETERS"].get("WEIGHT_DECAY", 0.)
     scheduler_warmup_steps = config["LEARNING_PARAMETERS"].get("SCHEDULER_WARMUP_STEPS")
     use_scheduler = scheduler_warmup_steps is not None
     history_path = os.path.join(log_dir, f"history.csv") 
@@ -73,7 +73,9 @@ def train(
 
     ## INITIALIZE LOSS AND OPTIMIZER
     criterion = LOSSES[config["LEARNING_PARAMETERS"]["LOSS"]]
-    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(0.9, 0.999))
+    optimizer_cls = optim.Adam if weight_decay == 0. else optim.AdamW
+    optimizer = optimizer_cls(model.parameters(), lr=lr, weight_decay=weight_decay, betas=(0.9, 0.999))
+    
     if use_scheduler:
         scheduler = get_cosine_schedule_with_warmup(optimizer, scheduler_warmup_steps, epochs)
     n = len(train_loader)
@@ -230,10 +232,6 @@ def kfold(
         train_loader = DataLoader(Subset(train_dataset, train_idxs), batch_size=bs, shuffle=True,  generator=torch.Generator().manual_seed(seed)) #num_workers=os.cpu_count()//4
         val_loader   = DataLoader(Subset(train_dataset, val_idxs),   batch_size=bs, shuffle=False, generator=torch.Generator().manual_seed(seed)) #num_workers=os.cpu_count()//4
         test_loader  = DataLoader(test_dataset,  batch_size=bs, shuffle=False, generator=torch.Generator().manual_seed(seed)) #num_workers=os.cpu_count()//4
-        # t = list(np.array(train_loader.dataset.dataset.targets)[train_loader.dataset.indices])
-        # v = list(np.array(val_loader.dataset.dataset.targets)[val_loader.dataset.indices])
-        # t_dist = {int(c):t.count(c) for c in set(t)}
-        # v_dist = {int(c):v.count(c) for c in set(v)}
 
         print(f"\nTRAINING FOLD {i+1}/{k}")
         test_loss, test_acc = train(
@@ -247,7 +245,7 @@ def kfold(
         results_acc.append(test_acc)
     
     if len(results_loss) > 0:
-        print(f"{k}-FOLD RESULTS | TEST LOSS: {np.mean(results_loss):.5f} ±{np.std(results_loss):.5f} | {np.mean(results_acc)*100:.5f}% ±{np.std(results_acc)*100:.5f}")
+        print(f"{k}-FOLD RESULTS | TEST LOSS: {np.mean(results_loss):.5f} ±{np.std(results_loss):.5f} | TEST ACC {np.mean(results_acc)*100:.5f}% ±{np.std(results_acc)*100:.5f}")
     else:
         print(f"/!\\ {k}-Fold results already completed for {config['EXPERIMENT_NAME']}")
     return
