@@ -27,10 +27,10 @@ from pooling.utils.supervised import (
     configure_logger,
     log,
 )
-from data.knn_centroid.dataset import load_knn_centroid
-from data.cifar10.dataset import load_cifar_10
-from data.cifar100.dataset import load_cifar_100
-from data.imagenet.dataset import load_imagenet
+from pooling.datasets.knn_centroid.dataset import load_knn_centroid
+from pooling.datasets.cifar10.dataset import load_cifar_10
+from pooling.datasets.cifar100.dataset import load_cifar_100
+from pooling.datasets.imagenet.dataset import load_imagenet
 
 
 MODELS = {
@@ -40,8 +40,8 @@ MODELS = {
 }
 LOSSES = {
     "MSE": nn.MSELoss(),
-    "CrossEntropy": nn.CrossEntropyLoss(),
     "NLL": nn.NLLLoss(),
+    "CrossEntropy": nn.CrossEntropyLoss(),
     "BCELogits": nn.BCEWithLogitsLoss(reduction="sum"),
 }
 LOADERS = {

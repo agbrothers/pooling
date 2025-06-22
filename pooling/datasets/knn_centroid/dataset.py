@@ -124,7 +124,8 @@ def load_knn_centroid(experiment_path, config):
     test_ratio = config["LEARNING_PARAMETERS"]["TEST_RATIO"]
 
     ## LOAD DATA
-    data_path = os.path.dirname(__file__)
+    base_path = experiment_path.split("experiments")[0]
+    data_path = os.path.join(base_path, "pooling", "datasets", "knn_centroid")
     X = np.load(os.path.join(data_path, f"X-N{cardinality}-d{dim_vectors}.npy"))                 # SHAPE: [batch, num_vectors, dim_vectors]
     y = np.load(os.path.join(data_path, f"y-N{cardinality}-d{dim_vectors}-KNN{num_neighbors}.npy")) # SHAPE: [batch, aggregate_vector]
 
@@ -143,7 +144,7 @@ def load_knn_centroid(experiment_path, config):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-m', '--method', default="knn2", type=str, help='Aggregation method for the dataset.')
+    parser.add_argument('-m', '--method', default="knn128", type=str, help='Aggregation method for the dataset.')
     parser.add_argument('-n', '--num_samples', default=1_000_000, type=int, help='Number of samples in the dataset.')
     parser.add_argument('-k', '--num_vectors', default=128, type=int, help='Number of vectors to aggregate per sample.')
     parser.add_argument('-d', '--dim_vectors', default=16, type=int, help='Dimensionality of the vectors per sample.')
@@ -153,7 +154,8 @@ if __name__ == "__main__":
 
     X_path = os.path.join(os.path.dirname(__file__), f"X-N{args.num_vectors}-d{args.dim_vectors}.npy")
     y_path = os.path.join(os.path.dirname(__file__), f"y-N{args.num_vectors}-d{args.dim_vectors}-{args.method.upper()}.npy")
-
+    print(X_path)
+    print(y_path)
     ## USE SAME X TRAINING DATA FOR EACH AGGREGATION METHOD TO SAVE SPACE
     if os.path.exists(X_path):
         X = np.load(X_path) 
