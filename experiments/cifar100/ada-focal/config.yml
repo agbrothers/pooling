@@ -1,0 +1,39 @@
+EXPERIMENT_NAME: CIFAR-ADA-FOCAL
+
+DATASET_NAME: CIFAR100
+
+LEARNING_PARAMETERS: 
+  NUM_EXPERIMENTS: 1
+  LEARNING_RATE: 1.0e-3
+  SCHEDULER_WARMUP_STEPS: 30  
+  WEIGHT_DECAY: 0.1
+  GRAD_CLIP: 1.0
+  BATCH_SIZE: 512 
+  EPOCHS: 300
+  LOSS: CrossEntropy
+  NUM_FOLDS: 5
+  DEBUG: False
+
+MODEL_CONFIG:
+  model: ViT
+  num_classes: 100
+  size_img: 32
+  size_patch: 4
+  num_layers: 6 
+  num_heads: 8 
+  dim_hidden: 512
+  dropout_w: 0.1 
+  dropout_e: 0.1 
+  dropout_ff: 0.1 
+  dropout_embd: 0.1
+  bias_attn: False 
+  bias_ff: True 
+  flash: True 
+  norm_output: True  
+  pooling_method: AdaPool 
+  query_idx: 
+    - 27
+    - 28
+    - 35
+    - 36
+
