@@ -1,4 +1,4 @@
-EXPERIMENT_NAME: "boxworld-entities"
+EXPERIMENT_NAME: "boxworld-entities-AVG"
 
 LEARNING_PARAMETERS: 
   LEARNING_RATE: &learning_rate 2.5e-3
@@ -79,10 +79,6 @@ MODEL_CONFIG:
     query_idx: -1
     flash: True # Use flash attention implementation
     pooling_method: AvgPool 
-    # pooling_method: MaxPool 
-    # pooling_method: AdaPool 
-    # pooling_method: ClsToken 
-
 
 PPO_CONFIG:
   env: *env_id
@@ -124,12 +120,12 @@ PPO_CONFIG:
   evaluation_duration_unit: episodes 
   evaluation_num_env_runners: 0 
   evaluation_config: 
-      record_env: False 
-      explore: False 
-      keep_per_episode_custom_metrics: True
-      num_envs_per_env_runner: 1 
-      batch_mode: truncate_episodes
-      rollout_fragment_length: *len_rollout
-      env_config: 
-        <<: *env
-        episodes_per_recording: 1
+    record_env: False 
+    explore: False 
+    keep_per_episode_custom_metrics: True
+    num_envs_per_env_runner: 1 
+    batch_mode: truncate_episodes
+    rollout_fragment_length: *len_rollout
+    env_config: 
+      <<: *env
+      episodes_per_recording: 1
