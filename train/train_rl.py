@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     ## PARSE ARGUMENTS
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('-p', '--experiment_path', default="./experiments/simple-tag-1v3v0/ada", help='Path to the experiment directory.')
+    parser.add_argument('-p', '--experiment_path', default="./experiments/simple-centroid/1v3v28/ada/", help='Path to the experiment directory.')
     args = parser.parse_args()
     
     ## LOAD AND BUILD CONFIG

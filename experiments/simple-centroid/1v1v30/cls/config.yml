@@ -1,4 +1,4 @@
-EXPERIMENT_NAME: "simple-centroid-1v1v30"
+EXPERIMENT_NAME: "simple-centroid-1v1v30-CLS"
 
 LEARNING_PARAMETERS: 
   LEARNING_RATE: &learning_rate 2.5e-3 
@@ -53,35 +53,32 @@ MODEL_CONFIG:
   # attempted to be passed as **kwargs to ModelV2 models. For an example
   # see rllib/models/[tf|torch]/attention_net.py.
   custom_model_config: 
-      # === WRAPPER PARAMETERS === #
-      use_gpu: True
-      input_layer_pi: True # Project input to hidden dim before policy
-      output_head_pi: True  # Map policy output to num actions
-      output_head_pi_layers: 3
-      output_head_pi_dim: 32
-      input_layer_vf: False # Project input to hidden dim before value func
-      output_head_vf: True  # Map value func output to scalar
-      output_head_vf_layers: 3
-      output_head_vf_dim: 32
-      continuous_actions: *continuous_actions
-      # === MODEL PARAMETERS === #
-      num_layers: 3 
-      num_heads: 8
-      dim_hidden: 8
-      dim_ff: 32 
-      dim_embd: 4 
-      num_embd: 4 
-      dropout_w: 0.0 
-      dropout_e: 0.0 
-      dropout_ff: 0.1 
-      bias_attn: False 
-      bias_ff: True
-      idx_embd: -1 
-      flash: True # Use flash attention implementation
-      pooling_method: AvgPool 
-      # pooling_method: MaxPool 
-      # pooling_method: AdaPool 
-      # pooling_method: ClsToken 
+    # === WRAPPER PARAMETERS === #
+    use_gpu: True
+    input_layer_pi: True # Project input to hidden dim before policy
+    output_head_pi: True  # Map policy output to num actions
+    output_head_pi_layers: 3
+    output_head_pi_dim: 32
+    input_layer_vf: False # Project input to hidden dim before value func
+    output_head_vf: True  # Map value func output to scalar
+    output_head_vf_layers: 3
+    output_head_vf_dim: 32
+    continuous_actions: *continuous_actions
+    # === MODEL PARAMETERS === #
+    num_layers: 3 
+    num_heads: 8
+    dim_hidden: 8
+    dim_ff: 32 
+    dim_embd: 4 
+    num_embd: 4 
+    dropout_w: 0.0 
+    dropout_e: 0.0 
+    dropout_ff: 0.1 
+    bias_attn: False 
+    bias_ff: True
+    idx_embd: -1 
+    flash: True # Use flash attention implementation
+    pooling_method: ClsToken 
 
 PPO_CONFIG:
   env: *env_id
@@ -123,10 +120,10 @@ PPO_CONFIG:
   evaluation_duration_unit: episodes 
   evaluation_num_env_runners: 0 
   evaluation_config: 
-      record_env: False 
-      explore: False 
-      keep_per_episode_custom_metrics: True
-      num_envs_per_env_runner: 1 
-      env_config: 
-        <<: *env
-        episodes_per_recording: 1
+    record_env: False 
+    explore: False 
+    keep_per_episode_custom_metrics: True
+    num_envs_per_env_runner: 1 
+    env_config: 
+      <<: *env
+      episodes_per_recording: 1
