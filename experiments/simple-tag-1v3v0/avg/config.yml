@@ -1,4 +1,4 @@
-EXPERIMENT_NAME: "simple-tag-1v3v4"
+EXPERIMENT_NAME: "simple-tag-1v3v0-AVG"
 
 LEARNING_PARAMETERS: 
   LEARNING_RATE: &learning_rate 2.5e-3 
@@ -40,7 +40,7 @@ ENV_CONFIG: &env
   mpe_config:
     num_adversaries: 1  ## PREDATORS (LEARNING AGENTS)
     num_good: 3         ## PREY (SIGNAL)
-    num_obstacles: 4    ## OBSTACLES (NOISE)
+    num_obstacles: 0    ## OBSTACLES (NOISE)
     max_cycles: *len_episodes 
     continuous_actions: False
     render_mode: rgb_array
@@ -56,34 +56,31 @@ MODEL_CONFIG:
   # attempted to be passed as **kwargs to ModelV2 models. For an example
   # see rllib/models/[tf|torch]/attention_net.py.
   custom_model_config: 
-      # === WRAPPER PARAMETERS === #
-      use_gpu: True
-      input_layer_pi: True # Project input to hidden dim before policy
-      output_head_pi: True  # Map policy output to num actions
-      output_head_pi_layers: 3
-      output_head_pi_dim: 32
-      input_layer_vf: False # Project input to hidden dim before value func
-      output_head_vf: True  # Map value func output to scalar
-      output_head_vf_layers: 3
-      output_head_vf_dim: 32
-      # === MODEL PARAMETERS === #
-      num_layers: 6 
-      num_heads: 3 
-      dim_hidden: 3 
-      dim_ff: 12 
-      dim_embd: 4 
-      num_embd: 4 
-      dropout_w: 0.0 
-      dropout_e: 0.0 
-      dropout_ff: 0.1 
-      bias_attn: False 
-      bias_ff: True
-      idx_embd: -1 
-      flash: True # Use flash attention implementation
-      pooling_method: AvgPool 
-      # pooling_method: MaxPool 
-      # pooling_method: AdaPool
-      # pooling_method: ClsToken 
+    # === WRAPPER PARAMETERS === #
+    use_gpu: True
+    input_layer_pi: True # Project input to hidden dim before policy
+    output_head_pi: True  # Map policy output to num actions
+    output_head_pi_layers: 3
+    output_head_pi_dim: 32
+    input_layer_vf: False # Project input to hidden dim before value func
+    output_head_vf: True  # Map value func output to scalar
+    output_head_vf_layers: 3
+    output_head_vf_dim: 32
+    # === MODEL PARAMETERS === #
+    num_layers: 6 
+    num_heads: 3 
+    dim_hidden: 3 
+    dim_ff: 12 
+    dim_embd: 4 
+    num_embd: 4 
+    dropout_w: 0.0 
+    dropout_e: 0.0 
+    dropout_ff: 0.1 
+    bias_attn: False 
+    bias_ff: True
+    idx_embd: -1 
+    flash: True # Use flash attention implementation
+    pooling_method: AvgPool 
 
 PPO_CONFIG:
   env: simple_tag
@@ -125,10 +122,10 @@ PPO_CONFIG:
   evaluation_duration_unit: episodes 
   evaluation_num_env_runners: 0 
   evaluation_config: 
-      record_env: False 
-      explore: False 
-      keep_per_episode_custom_metrics: True
-      num_envs_per_env_runner: 1 
-      env_config: 
-        <<: *env
-        episodes_per_recording: 1
+    record_env: False 
+    explore: False 
+    keep_per_episode_custom_metrics: True
+    num_envs_per_env_runner: 1 
+    env_config: 
+      <<: *env
+      episodes_per_recording: 1
