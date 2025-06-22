@@ -1,0 +1,50 @@
+[project] 
+name            = "pooling"
+version         = "1.0.0"
+description     = "Code repository for reproducing results from the `Robust Noise Attenuation via Adaptive Pooling of Transformer Outputs` paper"
+readme          = "README.md"
+requires-python = ">=3.11"
+authors         = [ { name = "Greyson Brothers", email = "greysonbrothers@gmail.com" } ]
+license         = "MIT"
+license-files   = ["LICENSE*"]
+
+keywords = [
+    'artificial intelligence',
+    'deep learning',
+    'pooling',
+    'AdaPool',
+]
+
+dependencies    = [
+    "numpy==2.0.2",
+    "torch==2.6.0",
+    "torchvision==0.21.0",
+    "pettingzoo[mpe]==1.24.3",
+    "gymnasium==0.29.0",
+    "matplotlib==3.9.2",
+    "dm-tree==0.1.8",
+    "einops==0.8.1",
+    "PyYAML==6.0.2",
+    "ray==2.37.0",
+    "pandas==2.2.3",
+    "pyarrow==18.1.0",
+    "typer==0.15.1",
+    "opencv-python==4.10.0.84",
+    "scipy==1.14.1",
+    "lz4==4.3.3",
+    "tqdm==4.67.1",
+    "PyVirtualDisplay==3.0",
+    "moviepy==2.1.1",
+]
+
+[build-system]
+requires      = ["setuptools>=65.5.1", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["pooling", "pooling.*"]
+
+[project.urls]
+Homepage = "https://icml.cc/virtual/2025/poster/46284"
+Repository = "https://github.com/agbrothers/pooling"
