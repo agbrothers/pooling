@@ -1,16 +1,16 @@
 EXPERIMENT_NAME: "simple-centroid-1v15v16-AVG"
 
 LEARNING_PARAMETERS: 
-  LEARNING_RATE: &learning_rate 2.5e-3 
-  BATCH_SIZE: &batch_size 4096 
-  LEN_EPISODES: &len_episodes 128 
-  LEN_ROLLOUT: &len_rollout 128 
-  NUM_TRAIN_EPISODES: &num_train_episodes 250 
-  NUM_EVAL_EPISODES: &num_eval_episodes 1
-  NUM_SGD_ITER: &num_sgd_iter 16
-  NUM_WORKERS: &num_workers 16 # BATCH_SIZE // LEN_EPISODES
-  NUM_ENVS_PER_WORKER: &num_envs_per_worker 2
-  NUM_GPUS: &num_gpus 1
+  LEARNING_RATE:        &learning_rate   2.5e-3 
+  BATCH_SIZE:           &batch_size        4096 
+  LEN_EPISODES:         &len_episodes       128 
+  LEN_ROLLOUT:          &len_rollout        128 
+  NUM_TRAIN_EPISODES:   &num_train_episodes 250 
+  NUM_EVAL_EPISODES:    &num_eval_episodes    1
+  NUM_SGD_ITER:         &num_sgd_iter        16
+  NUM_WORKERS:          &num_workers         16 # BATCH_SIZE / (LEN_EPISODES * NUM_ENVS_PER_WORKER)
+  NUM_ENVS_PER_WORKER:  &num_envs_per_worker  2
+  NUM_GPUS:             &num_gpus             1
   COUNT_STEPS_BY: env_steps #agent_steps 
   NUM_EXPERIMENTS: 10 
   EVAL: False 

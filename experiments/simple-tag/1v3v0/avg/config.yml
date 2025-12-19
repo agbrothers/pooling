@@ -1,15 +1,15 @@
 EXPERIMENT_NAME: "simple-tag-1v3v0-AVG"
 
 LEARNING_PARAMETERS: 
-  LEARNING_RATE: &learning_rate 2.5e-3 
-  BATCH_SIZE: &batch_size 8192 
-  LEN_EPISODES: &len_episodes 128 
-  NUM_TRAIN_EPISODES: &num_train_episodes 500 
-  NUM_EVAL_EPISODES: &num_eval_episodes 2
-  NUM_SGD_ITER: &num_sgd_iter 16
-  NUM_WORKERS: &num_workers 16 # BATCH_SIZE // LEN_EPISODES
-  NUM_ENVS_PER_WORKER: &num_envs_per_worker 4
-  NUM_GPUS: &num_gpus 1
+  LEARNING_RATE:        &learning_rate   2.5e-3 
+  BATCH_SIZE:           &batch_size        8192 
+  LEN_EPISODES:         &len_episodes       128 
+  NUM_TRAIN_EPISODES:   &num_train_episodes 500 
+  NUM_EVAL_EPISODES:    &num_eval_episodes    2
+  NUM_SGD_ITER:         &num_sgd_iter        16
+  NUM_WORKERS:          &num_workers         16 # BATCH_SIZE / (LEN_EPISODES * NUM_ENVS_PER_WORKER)
+  NUM_ENVS_PER_WORKER:  &num_envs_per_worker  4
+  NUM_GPUS:             &num_gpus             1
   COUNT_STEPS_BY: env_steps #agent_steps 
   NUM_EXPERIMENTS: 20 
   EVAL: False
@@ -32,18 +32,18 @@ AGENT_TO_POLICY:
   agent_2: prey
 
 ENV_CONFIG: &env
-  landmark_spawning: spread #radial #out_of_bounds
+  env_id: &env_id mpe_tag
+  obstacle_ics: spread #radial #out_of_bounds
   episodes_per_recording: 10000
-  pred_landmark_collision: 0
-  pred_prey_collision: 10
-  collidable_landmarks: False
-  mpe_config:
-    num_adversaries: 1  ## PREDATORS (LEARNING AGENTS)
-    num_good: 3         ## PREY (SIGNAL)
-    num_obstacles: 0    ## OBSTACLES (NOISE)
-    max_cycles: *len_episodes 
-    continuous_actions: False
-    render_mode: rgb_array
+  rew_pred_hit_obstacle: 0
+  rew_pred_hit_prey: 10
+  collidable_obstacles: False
+  num_predators: 1  ## PREDATORS (LEARNING AGENTS)
+  num_prey: 3       ## PREY (SIGNAL)
+  num_obstacles: 0  ## OBSTACLES (NOISE)
+  max_cycles: *len_episodes 
+  continuous_actions: False
+  render_mode: rgb_array
 
 MODEL_CONFIG:
   # === Options for custom models ===
@@ -83,7 +83,7 @@ MODEL_CONFIG:
     pooling_method: AvgPool 
 
 PPO_CONFIG:
-  env: simple_tag
+  env: *env_id
   env_config: *env 
   num_gpus: *num_gpus 
   num_env_runners: *num_workers 
