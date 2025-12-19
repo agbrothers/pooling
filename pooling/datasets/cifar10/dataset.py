@@ -8,23 +8,8 @@ HYPERPARAMETERS ADOPTED FROM - https://github.com/kentaroy47/vision-transformers
 
 """
 
-
-class KFoldDataset:
-
-    def __init__(self, root, train=True, train_transform=None, test_transform=None, target_transform=None):
-        self.dataset = CIFAR10(train, train_transform, target_transform, download=False)
-        self.train_transform = train_transform
-        self.test_transform = test_transform
-        self.train = True
-        return
-    
-    def __getitem__(self, index):
-        return self.dataset
-
-
-
 class CIFAR10_KFOLD(CIFAR10):
-    def __init__(self, root, train=True, transform=None, test_transform=None, target_transform=None, download=False):
+    def __init__(self, root, train=True, transform=None, test_transform=None, target_transform=None, download=True):
         super().__init__(root, train, transform, target_transform, download)
         self.test_transform = test_transform
         self.train = True

@@ -9,7 +9,7 @@ HYPERPARAMETERS ADOPTED FROM - https://github.com/kentaroy47/vision-transformers
 """
 
 class CIFAR100_KFOLD(CIFAR100):
-    def __init__(self, root, train=True, transform=None, test_transform=None, target_transform=None, download=False):
+    def __init__(self, root, train=True, transform=None, test_transform=None, target_transform=None, download=True):
         super().__init__(root, train, transform, target_transform, download)
         self.test_transform = test_transform
         self.train = True
@@ -46,7 +46,6 @@ def load_cifar_100(experiment_path, config):
         transforms.ToTensor(),
         transforms.Normalize(mean, std),
     ])
-    # path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cifar100")
     base_path = experiment_path.split("experiments")[0]
     data_path = os.path.join(base_path, "pooling", "datasets", "cifar100")
     trainset = CIFAR100_KFOLD(root=data_path, train=True, transform=transform_train, test_transform=transform_test)
