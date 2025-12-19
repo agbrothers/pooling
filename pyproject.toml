@@ -3,7 +3,7 @@ name            = "pooling"
 version         = "1.0.0"
 description     = "Code repository for reproducing results from the `Robust Noise Attenuation via Adaptive Pooling of Transformer Outputs` paper"
 readme          = "README.md"
-requires-python = ">=3.11"
+requires-python = "==3.11.11"
 authors         = [ { name = "Greyson Brothers", email = "greysonbrothers@gmail.com" } ]
 license         = "MIT"
 license-files   = ["LICENSE*"]
@@ -35,6 +35,8 @@ dependencies    = [
     "tqdm==4.67.1",
     "PyVirtualDisplay==3.0",
     "moviepy==2.1.1",
+    "tensorboard",
+    "tensorboardX",
 ]
 
 [build-system]
