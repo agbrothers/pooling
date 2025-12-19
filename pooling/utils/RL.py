@@ -6,13 +6,12 @@ import glob
 import torch
 import random
 import numpy as np
-
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.tune.logger import UnifiedLogger
+from ray.tune.logger import  TBXLogger
 
 from pooling import POLICY_REGISTER, __path__
-# from pooling.utils.custom_metrics import CustomMetricCallbacks
+
 
 
 def set_seed(seed):
@@ -81,7 +80,7 @@ def configure_logging(config:dict, exp_dir:str=None, log_dir:str=None, eval:bool
     ## SET LOGDIR
     config["PPO_CONFIG"]["env_config"]["video_dir"] = os.path.join(log_dir, "videos")
     config["PPO_CONFIG"]["evaluation_config"]["env_config"]["video_dir"] = os.path.join(log_dir, "videos")
-    config["PPO_CONFIG"]["logger_config"] = {"type": UnifiedLogger, "logdir": log_dir, "log_level":"ERROR"}
+    config["PPO_CONFIG"]["logger_config"] = {"type": TBXLogger, "logdir": log_dir, "log_level":"ERROR"}
     return config
 
 

@@ -1,3 +1,19 @@
+import os
+os.environ.setdefault("PYTHONWARNINGS", "ignore")
+
+## THIS VERSION OF RAY HAS OVERLY VERBOSE WARNINGS
+import logging
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message=r"pkg_resources is deprecated as an API\..*",
+    category=UserWarning,
+    module=r"pygame\.pkgdata",
+)
+logging.getLogger("ray").setLevel(logging.ERROR)
+logging.getLogger("ray.tune").setLevel(logging.ERROR)
+logging.getLogger("ray.rllib").setLevel(logging.ERROR)
+
 from ray.tune import register_env
 from ray.rllib.models import ModelCatalog
 from ray.rllib.algorithms.ppo import PPOTorchPolicy
@@ -11,7 +27,6 @@ from pooling.heuristics.random import RandomHeuristic
 from pooling.heuristics.heuristic import RllibHeuristic
 from pooling.heuristics.predator import PredatorHeuristic
 from pooling.heuristics.prey import PreyHeuristic
-
 
 ## REGISTER CUSTOM MODELS WITH RAY/RLLIB
 from pooling.wrappers.rllib_attenuator import RLlibAttenuator

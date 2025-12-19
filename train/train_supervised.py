@@ -30,7 +30,6 @@ from pooling.utils.supervised import (
 from pooling.datasets.knn_centroid.dataset import load_knn_centroid
 from pooling.datasets.cifar10.dataset import load_cifar_10
 from pooling.datasets.cifar100.dataset import load_cifar_100
-from pooling.datasets.imagenet.dataset import load_imagenet
 
 
 MODELS = {
@@ -48,7 +47,6 @@ LOADERS = {
     "KNN_CENTROID": load_knn_centroid,
     "CIFAR10": load_cifar_10,
     "CIFAR100": load_cifar_100,
-    "IMAGENET": load_imagenet,
 }
     
 
@@ -225,7 +223,7 @@ def kfold(
         if not debug:
             model = torch.compile(model) # requires PyTorch 2.0
         parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"{parameters:,} LEARNABLE PARAMETERS -> {convert_size(get_gpu_memory()-initial_gpu_mem)}")        
+        # print(f"{parameters:,} LEARNABLE PARAMETERS -> {convert_size(get_gpu_memory()-initial_gpu_mem)}")        
 
         ## LOAD SPLIT
         train_idxs, val_idxs = next(fold_idx_pairs)
