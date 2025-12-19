@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -52,8 +53,10 @@ class RLlibWrapper(nn.Module, TorchModelV2):
         self.recurrent = self.model.pi._recurrent or (self.model.vf and self.model.vf._recurrent)
 
         self.to(self.device)
-        if self.device.type != "cpu":
-            print(f"{self._parameter_count:_} LEARNABLE PARAMETERS -> {convert_size(get_gpu_memory()-initial_gpu_mem)}")        
+        # if self.device.type != "cpu":
+        #     print(f"{self._parameter_count:_} LEARNABLE PARAMETERS -> {convert_size(get_gpu_memory()-initial_gpu_mem)}")        
+        # RLlib 2.37.0 sets this incorrectly, fix it here:
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
         if not self.recurrent: return
         
